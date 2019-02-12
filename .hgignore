@@ -1,0 +1,19 @@
+syntax: glob
+CMakeLists.txt.user
+CMakeCache.txt
+default.plot
+build
+RES
+CMakeCache.txt
+CMakeLists.txt.user
+*.bin
+*.mat
+*.svg
+*.pdf
+*.png
+*.mp4
+*.gif
+*.user
+*.check_cache
+*~
+*.so
