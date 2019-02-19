@@ -15,5 +15,5 @@ include_directories(${rbdl_luamodel_INCLUDE_DIR})
 include_directories(${rbdl_geometry_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-add_executable(numericalJacobian numerical_jacobian.cpp)
+add_executable(numericalJacobian numerical_jacobian.cpp csvtools.cc)
 target_link_libraries(numericalJacobian ${rbdl_LIBRARY} ${rbdl_luamodel_LIBRARY} ${rbdl_geometry_LIBRARY})

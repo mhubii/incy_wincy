@@ -12,8 +12,10 @@
 #include "ContactToolkit.h"
 
 using namespace boost::numeric::ublas;
+using namespace boost::numeric::odeint;
 using namespace RigidBodyDynamics;
 using namespace RigidBodyDynamics::Math;
+
 
 // Some typedefs.
 using vector_type = vector< double >;
@@ -21,7 +23,7 @@ using matrix_type = matrix< double >;
 
 
 // Function pointer of the system we want to describe.
-using system_func_ptr = auto(*)(const vector_type&, double) -> vector_type;
+using system_func_ptr = auto(*)(const vector_type&) -> vector_type;
 
 
 // Physical description of my system.
@@ -32,7 +34,7 @@ public:
 
     auto operator() (const vector_type& x, vector_type& dxdt, double t) -> void {
 
-        dxdt = system_(x, t);
+        dxdt = system_(x);
     }; // Performs a function call on system function pointer
 
     // Physics of the system are described by this function pointer.
@@ -56,7 +58,7 @@ public:
 
         for (uint i = 0; i < c; i++) {
 
-            column(J, i) = 0.5/h_*(system_(x + unit_vector<double>(c, i)*h_, t) - system_(x - unit_vector<double>(c, i)*h_, t)); // compute finite differences
+            column(J, i) = 0.5/h_*(system_(x + unit_vector<double>(c, i)*h_) - system_(x - unit_vector<double>(c, i)*h_)); // compute finite differences
         }
     };
 
@@ -74,9 +76,6 @@ public:
 Model model;
 
 VectorNd q, qd, qdd, tau;
-
-Vector3d r0P0;
-Vector3d eN0;
 
 //Hunt-Crossley contact terms. See
 // ContactToolkit::calcHuntCrossleyContactForce
@@ -125,7 +124,7 @@ Vector3d eT0;   //Tangental direction of the plane: in 2d this isn't necessary
                 //here we compute it to show how this is done in a
                 //numerically stable way in 3d.
 
-auto BouncingBall(vector_type& x, double t) -> vector_type {
+auto BouncingBall(const vector_type& x) -> vector_type {
 
     vector_type dxdt = zero_vector<double>(model.dof_count*2);
 
@@ -221,12 +220,27 @@ auto BouncingBall(vector_type& x, double t) -> vector_type {
 int main(int argc, char** argv) {
 
     std::string fileName;
+    double v_init;
+
+    printf("Run with -h to get help.\n");
 
     for (uint i = 0; i < argc; i++) {
 
         if (!strcmp(argv[i], "-m")) {
 
             fileName = argv[i+1];
+        }
+
+        if (!strcmp(argv[i], "-v")) {
+
+            v_init = std::stod(argv[i+1]);
+        }
+
+        if (!strcmp(argv[i], "-h")) {
+
+            std::cout << "Flags\n" <<
+                "for the model with -m /location/of/lua.lua\n" <<
+                "for the initial velocity with -v 0.01 (optional)" << std::endl;
         }
     }
 
@@ -269,21 +283,19 @@ int main(int argc, char** argv) {
     //If veps is too small, we really might have problems
     assert(veps > std::sqrt(std::numeric_limits<double>::epsilon()));
 
-    unsigned int numWorkTermsInState = 2; //1 normal work term
-                                          //1 friction term
-
     q   = VectorNd::Zero(model.dof_count);
     qd  = VectorNd::Zero(model.dof_count);
     qdd = VectorNd::Zero(model.dof_count);
     tau = VectorNd::Zero(model.dof_count);
+    vector_type x = zero_vector<double>(model.dof_count*2);
 
     q[1] = 1.; //ball starts 1m off the ground
     qd[0]= 1.;
 
-    // for(unsigned int i=0; i<q.rows();++i){
-    //     x[i] =q[i];
-    //     x[i+q.rows()] = qd[i];
-    // }
+    for(unsigned int i=0; i<q.rows();++i){
+        x(i) =q[i];
+        x(i+q.rows()) = qd[i];
+    }
 
     fext = std::vector<SpatialVector>(model.mBodies.size(), SpatialVector::Zero());
 
@@ -292,12 +304,45 @@ int main(int argc, char** argv) {
                         dynamicFrictionSpeed,dynamicFrictionCoefficient,
                         viscousFrictionSlope,"mu",frictionCoefficientCurve);
 
+    // ------------------ USE THE INTEGRATOR SCHEME
+    double t;
+    double t0 = 0.;
+    double t1 = 1.0;
+    double tp = 0.;
+    unsigned int npts = 100;
 
-    // USE THE INTEGRATOR SCHEME
+    double dt = (t1-t0)/(npts-1);
+
+    std::vector<double> rowData(model.dof_count+1);
+    std::vector<std::vector< double > > matrixData;
+
+    rowData[0] = 0;
+    for(uint z=0; z < model.dof_count; z++){
+        rowData[z+1] = x(z);
+    }
+
+    for(uint i=0; i <= npts; i++){
+
+        t = t0 + dt*i;
+
+        size_t num_of_steps = integrate_const(make_dense_output< rosenbrock4< double > >( 1.0e-6 , 1.0e-6 ),
+                                              std::make_pair( System(BouncingBall) , NumericalJacobian(BouncingBall) ) ,
+                                              x, tp, t, dt);
+        tp = t;
+
+        rowData[0] = t;
+        for(uint z=0; z < model.dof_count; z++){
+            rowData[z+1] = x(z);
+        }
+
+        matrixData.push_back(rowData);
+    }
 
 
-
-
+    // Store results.
+    std::string emptyHeader("");
+    std::string fileNameOut("animation.csv");   
+    printMatrixToFile(matrixData,emptyHeader,fileNameOut);
 
 
     // ------------------ SYNTAX EXPERIMENTS
