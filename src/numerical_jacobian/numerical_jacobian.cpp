@@ -1,4 +1,7 @@
 #include <iostream>
+#include <ctime>
+#include <string>
+#include <fstream>
 
 #include <boost/numeric/odeint.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
@@ -240,7 +243,7 @@ int main(int argc, char** argv) {
 
             std::cout << "Flags\n" <<
                 "for the model with -m /location/of/lua.lua\n" <<
-                "for the initial velocity with -v 0.01 (optional)" << std::endl;
+                "for the initial velocity with -v 0.01" << std::endl;
         }
     }
 
@@ -290,7 +293,7 @@ int main(int argc, char** argv) {
     vector_type x = zero_vector<double>(model.dof_count*2);
 
     q[1] = 1.; //ball starts 1m off the ground
-    qd[0]= 1.;
+    qd[0]= v_init;
 
     for(unsigned int i=0; i<q.rows();++i){
         x(i) =q[i];
@@ -321,6 +324,7 @@ int main(int argc, char** argv) {
         rowData[z+1] = x(z);
     }
 
+    clock_t begin = clock();
     for(uint i=0; i <= npts; i++){
 
         t = t0 + dt*i;
@@ -337,6 +341,8 @@ int main(int argc, char** argv) {
 
         matrixData.push_back(rowData);
     }
+    clock_t end = clock();
+    double sec = (end - begin)/CLOCKS_PER_SEC;
 
 
     // Store results.
@@ -344,6 +350,11 @@ int main(int argc, char** argv) {
     std::string fileNameOut("animation.csv");   
     printMatrixToFile(matrixData,emptyHeader,fileNameOut);
 
+    // Output time and initial velocity.
+    std::ofstream out;
+    out.open("time.csv", std::ios_base::app);
+    out << v_init << ", " << std::to_string(sec) << "\n";
+    out.close();
 
     // ------------------ SYNTAX EXPERIMENTS
 

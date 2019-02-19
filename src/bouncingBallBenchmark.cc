@@ -8,6 +8,8 @@
 
 #include <string>
 #include <iostream>
+#include <ctime>
+#include <fstream>
 #include <stdio.h> 
 #include <rbdl/rbdl.h>
 #include <rbdl/addons/luamodel/luamodel.h>
@@ -290,12 +292,38 @@ struct pushBackStateAndTime
 void f(const state_type &x, state_type &dxdt, const double t);
 
 /* Problem Constants */
-int main (int argc, char* argv[]) {
+// Main.
+int main(int argc, char** argv) {
+
+    std::string fileName;
+    double v_init;
+
+    printf("Run with -h to get help.\n");
+
+    for (uint i = 0; i < argc; i++) {
+
+        if (!strcmp(argv[i], "-m")) {
+
+            fileName = argv[i+1];
+        }
+
+        if (!strcmp(argv[i], "-v")) {
+
+            v_init = std::stod(argv[i+1]);
+        }
+
+        if (!strcmp(argv[i], "-h")) {
+
+            std::cout << "Flags\n" <<
+                "for the model with -m /location/of/lua.lua\n" <<
+                "for the initial velocity with -v 0.01" << std::endl;
+        }
+    }
+  
     rbdl_check_api_version (RBDL_API_VERSION);
 
   RigidBodyDynamics::Model model;
 
-  std::string fileName("../models/ballPlaneContact.lua");
   std::string ballName("Ball");
 
   if (!Addons::LuaModelReadFromFile(fileName.c_str(),&model)){
@@ -338,7 +366,7 @@ int main (int argc, char* argv[]) {
   tau.setZero();
 
   q[1] = 1.; //ball starts 1m off the ground
-  qd[0]= 1.;
+  qd[0]= v_init;
 
   for(unsigned int i=0; i<q.rows();++i){
     x[i] =q[i];
@@ -412,6 +440,7 @@ int main (int argc, char* argv[]) {
     //                 ,             ,             ,             ,             ,             ,             ,
     printf("          t,        theta,   d/dt theta,           ke,           pe,            w, ke+pe-w-kepe0\n");
 
+    clock_t begin = clock();
     for(unsigned int i=0; i<= npts; ++i){
       t = t0 + dt*i;
 
@@ -486,6 +515,8 @@ int main (int argc, char* argv[]) {
       bool here=true;
 
     }
+    clock_t end = clock();
+    double sec = (end - begin)/CLOCKS_PER_SEC;
     std::cout << std::endl;
     std::string emptyHeader("");
     std::string fileNameOut("animation.csv");
@@ -495,6 +526,12 @@ int main (int argc, char* argv[]) {
 
     fileNameOut = "kepe.csv";
     printMatrixToFile(matrixErrorData,emptyHeader,fileNameOut);
+
+    // Output time and initial velocity.
+    std::ofstream out;
+    out.open("time.csv", std::ios_base::app);
+    out << v_init << ", " << std::to_string(sec) << "\n";
+    out.close();
 
 
 
