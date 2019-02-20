@@ -296,6 +296,7 @@ void f(const state_type &x, state_type &dxdt, const double t);
 int main(int argc, char** argv) {
 
     std::string fileName;
+    std::string outLoc;
     double v_init;
 
     printf("Run with -h to get help.\n");
@@ -312,11 +313,17 @@ int main(int argc, char** argv) {
             v_init = std::stod(argv[i+1]);
         }
 
+
+        if (!strcmp(argv[i], "-o")) {
+
+            outLoc = argv[i+1];
+        }
+
         if (!strcmp(argv[i], "-h")) {
 
             std::cout << "Flags\n" <<
                 "for the model with -m /location/of/lua.lua\n" <<
-                "for the initial velocity with -v 0.01" << std::endl;
+                "for the output location with -o /output/location" << std::endl;
         }
     }
   
@@ -529,7 +536,7 @@ int main(int argc, char** argv) {
 
     // Output time and initial velocity.
     std::ofstream out;
-    out.open("time.csv", std::ios_base::app);
+    out.open(outLoc + "time.csv", std::ios_base::app);
     out << v_init << ", " << std::to_string(sec) << "\n";
     out.close();
 
