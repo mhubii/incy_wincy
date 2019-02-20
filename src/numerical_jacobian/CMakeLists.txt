@@ -17,3 +17,9 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(numericalJacobian numerical_jacobian.cpp csvtools.cc)
 target_link_libraries(numericalJacobian ${rbdl_LIBRARY} ${rbdl_luamodel_LIBRARY} ${rbdl_geometry_LIBRARY})
+
+add_executable(numericalJacobianIncyWincy numerical_jacobian_incyWincy.cpp csvtools.cc) 
+target_link_libraries(numericalJacobianIncyWincy ${rbdl_LIBRARY} ${rbdl_luamodel_LIBRARY} ${rbdl_geometry_LIBRARY})
+
+# test code
+add_executable(testTimer test_timer.cpp)
