@@ -1,5 +1,5 @@
 #include <iostream>
-#include <ctime>
+#include <chrono>
 #include <string>
 #include <fstream>
 #include <iomanip>
@@ -225,7 +225,7 @@ int main(int argc, char** argv) {
 
     std::string fileName;
     std::string outLoc;
-    double v_init;
+    std::vector<double> v_init(3, 0.);
 
     printf("Run with -h to get help.\n");
 
@@ -238,7 +238,9 @@ int main(int argc, char** argv) {
 
         if (!strcmp(argv[i], "-v")) {
 
-            v_init = std::stod(argv[i+1]);
+            v_init[0] = std::stod(argv[i+1]);
+            v_init[1] = std::stod(argv[i+2]);
+            v_init[2] = std::stod(argv[i+3]);
         }
 
         if (!strcmp(argv[i], "-o")) {
@@ -251,7 +253,7 @@ int main(int argc, char** argv) {
             std::cout << "Flags\n" <<
                 "for the model with -m /location/of/lua.lua\n" <<
                 "for the initial velocity with -v 0.01" << 
-                "for the output location with -o /output/location" << std::endl;
+                "for the output location with -o /output/location/" << std::endl;
         }
     }
 
@@ -301,7 +303,9 @@ int main(int argc, char** argv) {
     vector_type x = zero_vector<double>(model.dof_count*2);
 
     q[1] = 1.; //ball starts 1m off the ground
-    qd[0]= v_init;
+    qd[0]= v_init[0];
+    qd[1]= v_init[1];
+    qd[2]= v_init[2];
 
     for(unsigned int i=0; i<q.rows();++i){
         x(i) =q[i];
@@ -331,8 +335,9 @@ int main(int argc, char** argv) {
     for(uint z=0; z < model.dof_count; z++){
         rowData[z+1] = x(z);
     }
+    matrixData.push_back(rowData);
 
-    clock_t begin = clock();
+    auto begin = std::chrono::high_resolution_clock::now();
     for(uint i=0; i <= npts; i++){
 
         t = t0 + dt*i;
@@ -349,22 +354,22 @@ int main(int argc, char** argv) {
 
         matrixData.push_back(rowData);
     }
-    clock_t end = clock();
-    double sec = (end - begin)/CLOCKS_PER_SEC;
+    auto end = std::chrono::high_resolution_clock::now();
+    double msec = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
 
 
     // Store results.
     std::string emptyHeader("");
     std::ostringstream stream;
     stream << std::setprecision(1);
-    stream << v_init;
+    stream << v_init[0] << "_" << v_init[1] << "_" << v_init[2];
     std::string fileNameOut(outLoc + "animation_ii_vinit_" + stream.str() + ".csv");   // ii implicit integrator
     printMatrixToFile(matrixData,emptyHeader,fileNameOut);
 
     // Output time and initial velocity.
     std::ofstream out;
     out.open(outLoc + "time_ii.csv", std::ios_base::app);
-    out << v_init << ", " << std::to_string(sec) << "\n";
+    out << v_init[0] << ", " << v_init[1] << ", " << v_init[2] << ", " << msec << "\n";
     out.close();
 
     // ------------------ SYNTAX EXPERIMENTS
