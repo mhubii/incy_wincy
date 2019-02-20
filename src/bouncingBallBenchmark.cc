@@ -10,6 +10,7 @@
 #include <iostream>
 #include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <stdio.h> 
 #include <rbdl/rbdl.h>
 #include <rbdl/addons/luamodel/luamodel.h>
@@ -39,6 +40,7 @@ typedef std::vector< double > state_type;
 typedef runge_kutta_cash_karp54< state_type > error_stepper_type;
 typedef controlled_runge_kutta< error_stepper_type > controlled_stepper_type;
 
+std::string outLoc;
 
 class rbdlToBoost {
 
@@ -90,7 +92,7 @@ class rbdlToBoost {
                           viscousFrictionSlope,"mu",frictionCoefficientCurve);
 
         frictionCoefficientCurve.printCurveToCSVFile("",
-                           "frictionCoefficientCurve",0,dynamicFrictionSpeed*2);
+                           outLoc + "frictionCoefficientCurve",0,dynamicFrictionSpeed*2);
         //Set the velocity at which the relaxed method is used to compute
         //the direction vector of the tangential velocity of the contact
         //point
@@ -296,7 +298,6 @@ void f(const state_type &x, state_type &dxdt, const double t);
 int main(int argc, char** argv) {
 
     std::string fileName;
-    std::string outLoc;
     double v_init;
 
     printf("Run with -h to get help.\n");
@@ -402,7 +403,7 @@ int main(int argc, char** argv) {
     }
 
     double t;
-    double t0 = 0;
+    double t0 = 0.;
     double t1 = 1.0;
     unsigned int npts      = 100;
 
@@ -526,17 +527,20 @@ int main(int argc, char** argv) {
     double sec = (end - begin)/CLOCKS_PER_SEC;
     std::cout << std::endl;
     std::string emptyHeader("");
-    std::string fileNameOut("animation.csv");
+    std::ostringstream stream;
+    stream << std::setprecision(1);
+    stream << v_init;
+    std::string fileNameOut(outLoc + "animation_ei_vinit_" + stream.str() + ".csv");  // ei explicit integrator
     printMatrixToFile(matrixData,emptyHeader,fileNameOut);
-    fileNameOut.assign("animationForces.ff");
+    fileNameOut.assign(outLoc + "animationForces.ff");
     printMatrixToFile(matrixForceData,emptyHeader,fileNameOut);
 
-    fileNameOut = "kepe.csv";
+    fileNameOut = outLoc + "kepe.csv";
     printMatrixToFile(matrixErrorData,emptyHeader,fileNameOut);
 
     // Output time and initial velocity.
     std::ofstream out;
-    out.open(outLoc + "time.csv", std::ios_base::app);
+    out.open(outLoc + "time_ei.csv", std::ios_base::app);
     out << v_init << ", " << std::to_string(sec) << "\n";
     out.close();
 

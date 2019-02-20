@@ -2,6 +2,7 @@
 #include <ctime>
 #include <string>
 #include <fstream>
+#include <iomanip>
 
 #include <boost/numeric/odeint.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
@@ -354,12 +355,15 @@ int main(int argc, char** argv) {
 
     // Store results.
     std::string emptyHeader("");
-    std::string fileNameOut("animation.csv");   
+    std::ostringstream stream;
+    stream << std::setprecision(1);
+    stream << v_init;
+    std::string fileNameOut(outLoc + "animation_ii_vinit_" + stream.str() + ".csv");   // ii implicit integrator
     printMatrixToFile(matrixData,emptyHeader,fileNameOut);
 
     // Output time and initial velocity.
     std::ofstream out;
-    out.open(outLoc + "time.csv", std::ios_base::app);
+    out.open(outLoc + "time_ii.csv", std::ios_base::app);
     out << v_init << ", " << std::to_string(sec) << "\n";
     out.close();
 
