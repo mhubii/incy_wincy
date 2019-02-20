@@ -8,7 +8,7 @@
 
 #include <string>
 #include <iostream>
-#include <ctime>
+#include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <stdio.h> 
@@ -298,7 +298,7 @@ void f(const state_type &x, state_type &dxdt, const double t);
 int main(int argc, char** argv) {
 
     std::string fileName;
-    double v_init;
+    std::vector<double> v_init(3, 0.);
 
     printf("Run with -h to get help.\n");
 
@@ -311,7 +311,9 @@ int main(int argc, char** argv) {
 
         if (!strcmp(argv[i], "-v")) {
 
-            v_init = std::stod(argv[i+1]);
+            v_init[0] = std::stod(argv[i+1]);
+            v_init[1] = std::stod(argv[i+2]);
+            v_init[2] = std::stod(argv[i+3]);
         }
 
 
@@ -374,7 +376,9 @@ int main(int argc, char** argv) {
   tau.setZero();
 
   q[1] = 1.; //ball starts 1m off the ground
-  qd[0]= v_init;
+  qd[0]= v_init[0];
+  qd[1]= v_init[1];
+  qd[2]= v_init[2];
 
   for(unsigned int i=0; i<q.rows();++i){
     x[i] =q[i];
@@ -448,7 +452,7 @@ int main(int argc, char** argv) {
     //                 ,             ,             ,             ,             ,             ,             ,
     printf("          t,        theta,   d/dt theta,           ke,           pe,            w, ke+pe-w-kepe0\n");
 
-    clock_t begin = clock();
+    auto begin = std::chrono::high_resolution_clock::now();
     for(unsigned int i=0; i<= npts; ++i){
       t = t0 + dt*i;
 
@@ -523,13 +527,13 @@ int main(int argc, char** argv) {
       bool here=true;
 
     }
-    clock_t end = clock();
-    double sec = (end - begin)/CLOCKS_PER_SEC;
+    auto end = std::chrono::high_resolution_clock::now();
+    double msec = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
     std::cout << std::endl;
     std::string emptyHeader("");
     std::ostringstream stream;
     stream << std::setprecision(1);
-    stream << v_init;
+    stream << v_init[0] << "_" << v_init[1] << "_" << v_init[2];
     std::string fileNameOut(outLoc + "animation_ei_vinit_" + stream.str() + ".csv");  // ei explicit integrator
     printMatrixToFile(matrixData,emptyHeader,fileNameOut);
     fileNameOut.assign(outLoc + "animationForces.ff");
@@ -541,7 +545,7 @@ int main(int argc, char** argv) {
     // Output time and initial velocity.
     std::ofstream out;
     out.open(outLoc + "time_ei.csv", std::ios_base::app);
-    out << v_init << ", " << std::to_string(sec) << "\n";
+    out << v_init[0] << ", " << v_init[1] << ", " << v_init[2] << ", " << msec << "\n";
     out.close();
 
 

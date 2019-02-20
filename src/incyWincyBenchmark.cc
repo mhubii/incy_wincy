@@ -329,8 +329,8 @@ int main (int argc, char* argv[]) {
   //Hunt-Crossley contact terms. See
   // ContactToolkit::calcHuntCrossleyContactForce
   //for details
-  double exponent = 1.0;//2.0; //The spring force will increase with the deflection squared.
-  double stiffness = 100;//9.81/pow(0.2,2.); //The ball will settle to 1cm penetration
+  double exponent = 2.0; //The spring force will increase with the deflection squared.
+  double stiffness = 9.81/pow(0.2,2.); //The ball will settle to 1cm penetration
   double damping = 1.0; //damped  
 
   //Friction model terms. See
