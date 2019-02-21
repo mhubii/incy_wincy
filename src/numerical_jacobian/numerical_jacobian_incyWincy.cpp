@@ -7,6 +7,7 @@
 #include <boost/numeric/odeint.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/io.hpp>
+#include <boost/numeric/odeint/integrate/integrate_adaptive.hpp>
 
 #include <rbdl/rbdl.h>
 #include <rbdl/addons/luamodel/luamodel.h>
@@ -15,6 +16,7 @@
 #include "csvtools.h"
 #include "ContactToolkit.h"
 
+using namespace std::chrono;
 using namespace boost::numeric::ublas;
 using namespace boost::numeric::odeint;
 using namespace RigidBodyDynamics;
@@ -29,20 +31,23 @@ enum {
 
 auto Timer(int set) -> double {
 
+    double msec;
+
     // Set a timer.
     switch (set)
     {
         case START:
-            static auto t1 = std::chrono::high_resolution_clock::now();
+            static auto t1 = high_resolution_clock::now();
+            msec = 0.;
             break;
         case STOP:
-            static auto t2 = std::chrono::high_resolution_clock::now();
-            auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-            return msec;
+            static auto t2 = high_resolution_clock::now();
+            msec = duration_cast<milliseconds>(t2 - t1).count();
+            break;
         default:
             break;
     }
-    return;
+    return msec;
 }
 
 
@@ -75,6 +80,7 @@ public:
 // It would therefore be easiest to have a simple system, like the bouncing ball.
 // I will implement a simple test that compares the numerical jacobian of the bouncing ball with that of the analytical.
 
+
 class NumericalJacobian : public System
 {
 public:
@@ -92,8 +98,29 @@ public:
     };
 
     double h_ = std::sqrt(std::numeric_limits<double>::min());
-};
+}; // for rosenbrock
 
+
+/*
+class NumericalJacobian : public System
+{
+public:
+    NumericalJacobian(system_func_ptr system) : System(system) {   };
+
+    auto operator() (const vector_type& x, matrix_type& J , const double& t) -> void {
+
+        // Determine the Jacobian.
+        uint c = x.size();
+
+        for (uint i = 0; i < c; i++) {
+
+            column(J, i) = 0.5/h_*(system_(x + unit_vector<double>(c, i)*h_) - system_(x - unit_vector<double>(c, i)*h_)); // compute finite differences
+        }
+    };
+
+    double h_ = std::sqrt(std::numeric_limits<double>::min());
+}; // for implicit euler
+*/
 
 
 
@@ -322,8 +349,8 @@ int main(int argc, char** argv) {
     //Hunt-Crossley contact terms. See
     // ContactToolkit::calcHuntCrossleyContactForce
     //for details
-    exponent = 2.0; //The spring force will increase with the deflection squared.
-    stiffness = 9.81/pow(0.01,2.); //The ball will settle to 1cm penetration
+    exponent = 1.0;//2.0; //The spring force will increase with the deflection squared.
+    stiffness = 100;//9.81/pow(0.01,2.); //The ball will settle to 1cm penetration
     damping = 1.0; //lightly damped  
 
     //Friction model terms. See
@@ -384,16 +411,26 @@ int main(int argc, char** argv) {
     }
     matrixData.push_back(rowData);
 
-    auto begin = std::chrono::high_resolution_clock::now();
+    Timer(START);
     for(uint i=0; i <= npts; i++){
 
         printf("iteration %d/%d\n", i, npts);
 
         t = t0 + dt*i;
 
-        size_t num_of_steps = integrate_const(make_dense_output< rosenbrock4< double > >( 1.0e-6 , 1.0e-6 ),
-                                              std::make_pair( System(BouncingBall) , NumericalJacobian(BouncingBall) ) ,
-                                              x, tp, t, dt);
+        // size_t num_of_steps = integrate_const(make_dense_output< rosenbrock4< double > >( 1.0e-6 , 1.0e-6 ),
+        //                                       std::make_pair( System(BouncingBall) , NumericalJacobian(BouncingBall) ) ,
+        //                                       x, tp, t, dt); // way too sloooow
+        // size_t num_of_steps = integrate_const(make_dense_output< rosenbrock4< double > >( 1.0e-1 , 1.0e-1 ),
+        //                                       std::make_pair( System(BouncingBall) , NumericalJacobian(BouncingBall) ) ,
+        //                                       x, tp, t, dt); // little faster, still too slow
+        // size_t num_of_steps = integrate_const(implicit_euler < double >(),
+        //                                       std::make_pair( System(BouncingBall) , NumericalJacobian(BouncingBall) ) ,
+        //                                       x, tp, t, dt); // diverges on impact
+        size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 1.0e-2 , 1.0e-2 ),
+                                              System(BouncingBall),
+                                              x, tp, t, dt); // fast and explicit
+
         tp = t;
 
         rowData[0] = t;
@@ -403,8 +440,7 @@ int main(int argc, char** argv) {
 
         matrixData.push_back(rowData);
     }
-    auto end = std::chrono::high_resolution_clock::now();
-    double msec = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+    auto time = Timer(STOP);
 
 
     // Store results.
@@ -418,7 +454,7 @@ int main(int argc, char** argv) {
     // Output time and initial velocity.
     std::ofstream out;
     out.open(outLoc + "time_ii.csv", std::ios_base::app);
-    out << v_init[0] << ", " << v_init[1] << ", " << v_init[2] << ", " << msec << "\n";
+    out << v_init[0] << ", " << v_init[1] << ", " << v_init[2] << ", " << time << "\n";
     out.close();
 
     // ------------------ SYNTAX EXPERIMENTS
