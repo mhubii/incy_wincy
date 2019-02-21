@@ -18,6 +18,7 @@
 #include "csvtools.h"
 
 #include "ContactToolkit.h"
+#include "Timer.h"
 
 #include <boost/numeric/odeint/stepper/runge_kutta_cash_karp54.hpp>
 #include <boost/numeric/odeint/stepper/controlled_runge_kutta.hpp>
@@ -452,7 +453,7 @@ int main(int argc, char** argv) {
     //                 ,             ,             ,             ,             ,             ,             ,
     printf("          t,        theta,   d/dt theta,           ke,           pe,            w, ke+pe-w-kepe0\n");
 
-    auto begin = std::chrono::high_resolution_clock::now();
+    Timer(START);
     for(unsigned int i=0; i<= npts; ++i){
       t = t0 + dt*i;
 
@@ -527,8 +528,7 @@ int main(int argc, char** argv) {
       bool here=true;
 
     }
-    auto end = std::chrono::high_resolution_clock::now();
-    double msec = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+    auto time = Timer(STOP); // timer in msec
     std::cout << std::endl;
     std::string emptyHeader("");
     std::ostringstream stream;
@@ -545,10 +545,8 @@ int main(int argc, char** argv) {
     // Output time and initial velocity.
     std::ofstream out;
     out.open(outLoc + "time_ei.csv", std::ios_base::app);
-    out << v_init[0] << ", " << v_init[1] << ", " << v_init[2] << ", " << msec << "\n";
+    out << v_init[0] << ", " << v_init[1] << ", " << v_init[2] << ", " << time << "\n";
     out.close();
-
-
 
    return 0;
         

@@ -15,6 +15,7 @@
 #include "csvtools.h"
 
 #include "ContactToolkit.h"
+#include "Timer.h"
 
 #include <boost/numeric/odeint/stepper/runge_kutta_cash_karp54.hpp>
 #include <boost/numeric/odeint/stepper/controlled_runge_kutta.hpp>
@@ -330,7 +331,7 @@ int main (int argc, char* argv[]) {
   // ContactToolkit::calcHuntCrossleyContactForce
   //for details
   double exponent = 2.0; //The spring force will increase with the deflection squared.
-  double stiffness = 9.81/pow(0.2,2.); //The ball will settle to 1cm penetration
+  double stiffness = 9.81/pow(0.01,2.); //The ball will settle to 1cm penetration
   double damping = 1.0; //damped  
 
   //Friction model terms. See
@@ -441,7 +442,7 @@ int main (int argc, char* argv[]) {
       printf("step: %d\n", i);
       t = t0 + dt*i;
 
-      integrate_const(
+      integrate_adaptive(
           controlled_stepper ,
           rbdlModel , xState , tp , t , (t-tp)/10 );
 
