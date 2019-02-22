@@ -1,9 +1,5 @@
 #pragma once
 
-#include <deque>
-#include <random>
-
-#include <torch/torch.h>
 #include <Eigen/Core>
 
 
@@ -49,8 +45,8 @@ public:
 
     auto Add(sample& sample) -> void {
 
-        if (Length() <= deque_.max_size()) {
-            deque_.push_back(sample);
+        if (Length() <= memory_.max_size()) {
+            memory_.push_back(sample);
         }
         else {
             printf("ReplayMemory -- deque reached maximum size.\n");
@@ -60,24 +56,24 @@ public:
     auto Sample() const -> sample {
 
         // Shuffle memory.
-        std::shuffle(deque_.begin(), deque_.end(), re_);
+        std::shuffle(memory_.begin(), memory_.end(), re_);
 
         // Return single states as one matrix.
         uint n = Length();
 
-        Eigen::MatrixXf states(deque_[0].state.cols(), n);
-        Eigen::MatrixXf actions(deque_[0].action.cols(), n);
-        Eigen::MatrixXf rewards(deque_[0].reward.cols(), n);
-        Eigen::MatrixXf next_states(deque_[0].next_state.cols(), n);
-        Eigen::MatrixXf dones(deque_[0].done.cols(), n);
+        Eigen::MatrixXf states(memory_[0].state.cols(), n);
+        Eigen::MatrixXf actions(memory_[0].action.cols(), n);
+        Eigen::MatrixXf rewards(memory_[0].reward.cols(), n);
+        Eigen::MatrixXf next_states(memory_[0].next_state.cols(), n);
+        Eigen::MatrixXf dones(memory_[0].done.cols(), n);
 
         for (uint i = 0; i < n; i++) {
 
-            states.col(i) = deque_[i].state;
-            actions.col(i) = deque_[i].action;
-            rewards.col(i) = deque_[i].reward;
-            next_states.col(i) = deque_[i].next_state;
-            dones.col(i) = deque_[i].done;
+            states.col(i) = memory_[i].state;
+            actions.col(i) = memory_[i].action;
+            rewards.col(i) = memory_[i].reward;
+            next_states.col(i) = memory_[i].next_state;
+            dones.col(i) = memory_[i].done;
         }
 
         return {states, actions, rewards, next_states, dones};
@@ -85,12 +81,12 @@ public:
 
     auto Flush() -> void {
 
-        deque_.clear();
+        memory_.clear();
     };
 
     auto Length() const -> uint {
 
-        return deque_.size();
+        return memory_.size();
     };
 
 private:
@@ -100,5 +96,5 @@ private:
     std::mt19937 re_;
 
     // Memory.
-    memory deque_;
+    memory memory_;
 };
