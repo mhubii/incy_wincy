@@ -37,15 +37,17 @@ ReplayMemory::ReplayMemory(uint steps, torch::ArrayRef<int64_t> state_shape, tor
     : steps_(steps),
       step_(0),
 
-      mdp_(steps, std::make_tuple(torch::zeros(state_shape),
-                                  torch::zeros(action_shape),
-                                  torch::zeros({1}),
-                                  torch::zeros(state_shape),
-                                  torch::zeros({1}))),
-
       rd_(),
       re_(rd_())
 {
+    for (uint i=0;i<steps;i++) 
+    {
+        mdp_.push_back(std::make_tuple(torch::zeros(state_shape),
+                                       torch::zeros(action_shape),
+                                       torch::zeros({1}),
+                                       torch::zeros(state_shape),
+                                       torch::zeros({1})));
+    }
 }
 
 auto ReplayMemory::insert(MD md) -> void
@@ -59,7 +61,9 @@ auto ReplayMemory::insert(MD md) -> void
     step_++;
 
     if (step_ % steps_ == 0)
+    {
         step_ = 0;
+    }
 }
 
 auto ReplayMemory::gather() -> MDP
