@@ -6,6 +6,13 @@
 // Network model for Proximal Policy Optimization on Incy Wincy.
 struct ActorCritic : public torch::nn::Module 
 {
+    // Actor.
+    torch::nn::Linear a_lin1_, a_lin2_, a_lin3_;
+    torch::Tensor mu_;
+    torch::Tensor std_;
+
+    // Critic.
+    torch::nn::Linear c_lin1_, c_lin2_, c_lin3_, c_val_;
 
     ActorCritic(int64_t n_in, int64_t n_out, float std)
         : // Actor.
@@ -62,9 +69,22 @@ struct ActorCritic : public torch::nn::Module
         }
     }
 
+    // Initialize network.
+    void init() 
+    {
+        torch::NoGradGuard no_grad;
+
+        for (auto& p: this->parameters()) 
+        {
+            p.normal_(0.,0.1);
+        }         
+    }
+
     auto entropy() -> torch::Tensor
     {
         // Differential entropy of normal distribution. For reference https://pytorch.org/docs/stable/_modules/torch/distributions/normal.html#Normal
+        if (*(std_.data<float>()) < 0)
+            printf("std smaller zero -------------------------------------------------\n");
         return 0.5 + 0.5*log(2*M_PI) + std_.log();
     }
 
@@ -104,23 +124,4 @@ struct ActorCritic : public torch::nn::Module
             return std::make_tuple(mu_, val);  
         }
     }
-
-    // Initialize network.
-    void init() 
-    {
-        torch::NoGradGuard no_grad;
-
-        for (auto& p: this->parameters()) 
-        {
-            p.normal_(0.,0.1);
-        }         
-    }
-
-    // Actor.
-    torch::nn::Linear a_lin1_, a_lin2_, a_lin3_;
-    torch::Tensor mu_;
-    torch::Tensor std_;
-
-    // Critic.
-    torch::nn::Linear c_lin1_, c_lin2_, c_lin3_, c_val_;
 };

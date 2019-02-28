@@ -13,7 +13,7 @@ using MD = std::tuple<torch::Tensor /*state*/,
 // Markov decision process.
 using MDP = std::vector<MD>;
 
-class ReplayMemory
+class Memory
 {
 private:
     uint steps_;
@@ -21,24 +21,21 @@ private:
 
     MDP mdp_;
 
-    // Random engine for shuffling memory.
-    std::random_device rd_;
-    std::mt19937 re_;
-
 public:
-    ReplayMemory(uint steps, torch::ArrayRef<int64_t> state_shape, torch::ArrayRef<int64_t> action_shape);
+    Memory(uint steps, torch::ArrayRef<int64_t> state_shape, torch::ArrayRef<int64_t> action_shape);
 
     auto insert(MD md) -> void;
     auto gather() -> MDP;
     auto to(torch::Device dev) -> void;
+
+    // Getters.
+    inline auto size() const -> const uint& { return steps_; };
+    inline auto mdp() const -> const MDP& { return mdp_; };
 };
 
-ReplayMemory::ReplayMemory(uint steps, torch::ArrayRef<int64_t> state_shape, torch::ArrayRef<int64_t> action_shape)
+Memory::Memory(uint steps, torch::ArrayRef<int64_t> state_shape, torch::ArrayRef<int64_t> action_shape)
     : steps_(steps),
-      step_(0),
-
-      rd_(),
-      re_(rd_())
+      step_(0)
 {
     for (uint i=0;i<steps;i++) 
     {
@@ -50,7 +47,7 @@ ReplayMemory::ReplayMemory(uint steps, torch::ArrayRef<int64_t> state_shape, tor
     }
 }
 
-auto ReplayMemory::insert(MD md) -> void
+auto Memory::insert(MD md) -> void
 {
     std::get<0>(mdp_[step_]).copy_(std::get<0>(md));
     std::get<1>(mdp_[step_]).copy_(std::get<1>(md));
@@ -66,15 +63,7 @@ auto ReplayMemory::insert(MD md) -> void
     }
 }
 
-auto ReplayMemory::gather() -> MDP
-{
-    // Randomly shuffle memory and return Markov decision process.
-    std::shuffle(mdp_.begin(), mdp_.end(), re_);
-
-    return mdp_;
-}
-
-auto ReplayMemory::to(torch::Device dev) -> void 
+auto Memory::to(torch::Device dev) -> void 
 {
     // Load memory onto CPU/GPU.
     for (auto& md : mdp_) 
