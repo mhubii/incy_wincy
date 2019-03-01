@@ -41,7 +41,7 @@ struct ActorCritic : public torch::nn::Module
     }
 
     // Forward pass.
-    auto forward(torch::Tensor x, torch::Device device=torch::kCPU) -> std::tuple<torch::Tensor, torch::Tensor> 
+    auto forward(torch::Tensor x) -> std::tuple<torch::Tensor, torch::Tensor> 
     {
  
         // Actor.
@@ -60,7 +60,7 @@ struct ActorCritic : public torch::nn::Module
         {
             torch::NoGradGuard no_grad;
 
-            torch::Tensor action = torch::normal(mu_, std_.expand_as(mu_)).to(device);
+            torch::Tensor action = torch::normal(mu_, std_.expand_as(mu_));
             return std::make_tuple(action, val);  
         }
         else 
