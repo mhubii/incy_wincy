@@ -23,33 +23,59 @@ std::mt19937 re(rd());
 class PPO
 {
 public:
-    static auto returns(const MDP& mdp, VT& val, float gamma, float lambda) -> VT; // Generalized advantage estimate, https://arxiv.org/abs/1506.02438
-    static auto update(GAE& gae) -> void; // Update the policy after T time steps for K epochs
+    static auto returns(const MDP& mdp, VT& vals, float gamma, float lambda) -> VT; // Generalized advantage estimate, https://arxiv.org/abs/1506.02438
+    static auto update(ActorCritic& mod, GAE& gaes, float clip_param=.2) -> void; // Update the policy after T time steps for K epochs
 };
 
-auto PPO::returns(const MDP& mdp, VT& val, float gamma, float lambda) -> VT
+auto PPO::returns(const MDP& mdp, VT& vals, float gamma, float lambda) -> VT
 {
     // Compute the returns.
     torch::Tensor gae = torch::zeros({1});
     VT returns(mdp.size(), torch::zeros({1}));
 
-    for (uint i=mdp.size()-1;i>=0;i--)
+    for (uint i=mdp.size();i-- >0;) // inverse for loops over unsigned: https://stackoverflow.com/questions/665745/whats-the-best-way-to-do-a-reverse-for-loop-with-an-unsigned-index/665773
     {
         // Advantage.
         auto reward = std::get<2>(mdp[i]);
-        auto done = std::get<4>(mdp[i]);
+        auto done = (1-std::get<4>(mdp[i]));
 
-        auto delta = reward + gamma*val[i+1]*done - val[i];
+        auto delta = reward + gamma*vals[i+1]*done - vals[i];
         gae = delta + gamma*lambda*done*gae;
 
-        returns[i] = gae + val[i];
+        returns[i] = gae + vals[i];
     }
 
     return returns;
 }
 
-auto PPO::update(GAE& gae) -> void
+auto PPO::update(ActorCritic& ac, GAE& gaes, float clip_param) -> void
 {
-    // Iterate over shuffled GAE and update mod.
-    std::shuffle(gae.begin(), gae.end(), re);
+    std::shuffle(gaes.begin(), gaes.end(), re);
+
+    for (auto& gae: gaes)
+    {
+        auto state = std::get<0>(gae);
+        auto av = ac.forward(state); // action value pairs
+        auto action = std::get<0>(av);
+        auto entropy = ac.entropy();
+        auto new_log_prob = ac.log_prob(action);
+
+        auto old_log_prob = std::get<2>(gae);
+        auto ratio = (new_log_prob - old_log_prob).exp();
+        auto advantage = std::get<4>(gae);
+        auto surr1 = ratio*advantage;
+        auto surr2 = torch::clamp(ratio, 1. - clip_param, 1. + clip_param)*advantage;
+
+        auto ret = std::get<4>(gae);
+        auto val = std::get<1>(av);
+        auto actor_loss = -torch::min(surr1, surr2);
+        auto critic_loss = (ret-val).pow(2);
+
+        auto loss = 0.5*critic_loss+actor_loss-0.001*entropy;
+
+        // next optimize.. where to get parameters for optimizer from?? where to get optimizer from
+        // without having everything being coupled too much??? how do I remove the device from the 
+        // forward function?? how do I set the device for tensors within the actor critic class, that
+        // are not registered???
+    }
 }

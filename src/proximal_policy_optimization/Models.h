@@ -41,7 +41,7 @@ struct ActorCritic : public torch::nn::Module
     }
 
     // Forward pass.
-    auto forward(torch::Tensor x, torch::Device device) -> std::tuple<torch::Tensor, torch::Tensor> 
+    auto forward(torch::Tensor x, torch::Device device=torch::kCPU) -> std::tuple<torch::Tensor, torch::Tensor> 
     {
  
         // Actor.

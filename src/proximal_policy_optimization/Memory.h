@@ -25,7 +25,6 @@ public:
     Memory(uint steps, torch::ArrayRef<int64_t> state_shape, torch::ArrayRef<int64_t> action_shape);
 
     auto insert(MD md) -> void;
-    auto gather() -> MDP;
     auto to(torch::Device dev) -> void;
 
     // Getters.
