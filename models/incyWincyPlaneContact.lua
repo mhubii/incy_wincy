@@ -180,7 +180,7 @@ model = {
       joint_frame = {
         r = { -radiusBody, radiusBody, 0.0 },
       },
-      joint = joints.revolute_z,
+      --joint = joints.revolute_z,
     },
     {
       name = "FrontalLeftUpperLimb",
@@ -204,7 +204,7 @@ model = {
       joint_frame = {
         r = { 0.0, 0.0, -lengthLimb },
       },
-      joint = joints.revolute_y,
+      --joint = joints.revolute_y,
     },
     {
       name = "FrontalLeftLowerLimb",
@@ -228,7 +228,7 @@ model = {
       joint_frame = {
         r = { 0.0, 0.0, -lengthLimb },
       },
-      joint = joints.revolute_y,
+      --joint = joints.revolute_y,
     },
 
     -- frontal right leg
@@ -242,7 +242,7 @@ model = {
       joint_frame = {
         r = { radiusBody, radiusBody, 0.0 },
       },
-      joint = joints.revolute_z,
+      --joint = joints.revolute_z,
     },
     {
       name = "FrontalRightUpperLimb",
@@ -266,7 +266,7 @@ model = {
       joint_frame = {
         r = { 0.0, 0.0, -lengthLimb },
       },
-      joint = joints.revolute_y,
+      --joint = joints.revolute_y,
     },
     {
       name = "FrontalRightLowerLimb",
@@ -290,7 +290,7 @@ model = {
       joint_frame = {
         r = { 0.0, 0.0, -lengthLimb },
       },
-      joint = joints.revolute_y,
+      --joint = joints.revolute_y,
     },
 
     -- dorsal left leg
@@ -304,7 +304,7 @@ model = {
       joint_frame = {
         r = { -radiusBody, -radiusBody, 0.0 },
       },
-      joint = joints.revolute_z,
+      --joint = joints.revolute_z,
     },
     {
       name = "DorsalLeftUpperLimb",
@@ -328,7 +328,7 @@ model = {
       joint_frame = {
         r = { 0.0, 0.0, -lengthLimb },
       },
-      joint = joints.revolute_y,
+      --joint = joints.revolute_y,
     },
     {
       name = "DorsalLeftLowerLimb",
@@ -352,7 +352,7 @@ model = {
       joint_frame = {
         r = { 0.0, 0.0, -lengthLimb },
       },
-      joint = joints.revolute_y,
+      --joint = joints.revolute_y,
     },
 
     -- dorsal right leg
@@ -366,7 +366,7 @@ model = {
       joint_frame = {
         r = { radiusBody, -radiusBody, 0.0 },
       },
-      joint = joints.revolute_z,
+      --joint = joints.revolute_z,
     },
     {
       name = "DorsalRightUpperLimb",
@@ -390,7 +390,7 @@ model = {
       joint_frame = {
         r = { 0.0, 0.0, -lengthLimb },
       },
-      joint = joints.revolute_y,
+      --joint = joints.revolute_y,
     },
     {
       name = "DorsalRightLowerLimb",
@@ -414,7 +414,7 @@ model = {
       joint_frame = {
         r = { 0.0, 0.0, -lengthLimb },
       },
-      joint = joints.revolute_y,
+      --joint = joints.revolute_y,
     },
   },
 } -- model
