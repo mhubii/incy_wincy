@@ -56,23 +56,23 @@ auto PPO::update(ActorCritic& ac,
                  OPT& opt, 
                  uint steps, uint epochs, uint mini_batch_size, double clip_param) -> void
 {
-    for (uint i=0;i<epochs;i++)
+    for (uint e=0;e<epochs;e++)
     {
         // Generate random indices.
         std::vector<uint> idx;
         idx.reserve(mini_batch_size);
 
-        for (uint i=0;i<mini_batch_size;i++) {
+        for (uint b=0;b<mini_batch_size;b++) {
 
             idx.push_back(std::uniform_int_distribution<uint>(0, steps-1)(re));
         }
 
         for (auto& i: idx)
         {
-            auto av = ac.forward(states[i]); // action value pairs
+            auto av = ac->forward(states[i]); // action value pairs
             auto action = std::get<0>(av);
-            auto entropy = ac.entropy();
-            auto new_log_prob = ac.log_prob(actions[i]);
+            auto entropy = ac->entropy();
+            auto new_log_prob = ac->log_prob(actions[i]);
 
             auto old_log_prob = log_probs[i];
             auto ratio = (new_log_prob - old_log_prob).exp();
