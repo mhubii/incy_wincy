@@ -632,7 +632,7 @@ int main(int argc, char** argv) {
 
         t = 0.;
 
-        std::string fileNameOut(outLoc + "animation_ii_vinit_" + stream.str() + "_epoch_" + std::to_string(e+1) + ".csv");   // ii implicit integrator
+        std::string fileNameOut(outLoc + "animation_epoch_" + std::to_string(e+1) + ".csv");   // ii implicit integrator
         printMatrixToFile(matrixData,emptyHeader,fileNameOut);
 
         matrixData.clear();
