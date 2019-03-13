@@ -39,6 +39,8 @@ VectorNd q_init, qd_init, qdd_init;
 
 VectorNd q_off; // offset for forces in torque
 
+double x_old, x_new, z_old, z_new; // for the reward
+
 bool reset = false;
 bool reset_episode = true;
 
@@ -100,38 +102,46 @@ Vector3d eT0;   //Tangental direction of the plane: in 2d this isn't necessary
 // ---------------- DEEP LEARNING
 ActorCritic ac;
 
-torch::Tensor state;
-torch::Tensor action;
-torch::Tensor reward;
-torch::Tensor next_state;
-torch::Tensor done;
-
-torch::Tensor log_prob;
-torch::Tensor value;
-
 VT states;
 VT actions;
 VT rewards;
-VT next_states;
 VT dones;
 
 VT log_probs;
 VT values;
 VT returns;
-VT advantages;
+
+uint c; // counter
 
 
-double compute_reward(double v_x, double n_z, VectorNd torque)
+auto compute_reward(double v_x, double n_z, VectorNd torque, bool reset) -> torch::Tensor
 {
     // r = v_x + 0.05 n_z + (z>0 or sth) - 0.01 |torque|
-    return v_x + 0.05*n_z - 10*torque.norm();
+    double r = v_x + 0.1*n_z - 0.1*torque.norm();
+    if (reset) {
+        r -= 100.;
+    }
+    torch::Tensor reward = torch::full({1,1}, r, torch::kF64);
+    return reward;
+}
+
+auto compute_reward(double x_old, double x_new, double z_old, double z_new, double n_z, VectorNd torque, bool reset) -> torch::Tensor
+{
+    double r = (x_new - x_old) + (z_new - z_old) + 0.1*n_z - 0.1*torque.norm();
+    if (reset) {
+        r -= 100.;
+    }
+    torch::Tensor reward = torch::full({1,1}, r, torch::kF64);
+    return reward;
 }
 
 double v_x;
 double n_z;
 
-void to_state(VectorNd& q, VectorNd& qd, VectorNd qdd, std::vector<SpatialVector>& fext, torch::Tensor& state, bool ext=false)
+auto to_state(VectorNd& q, VectorNd& qd, VectorNd qdd, std::vector<SpatialVector>& fext, bool ext=false) -> torch::Tensor
 {
+    torch::Tensor state = torch::zeros({1, model.dof_count*3 + int(fext.size())*6}, torch::kF64);
+
     uint j = 0;
 
     for (auto& x: q)
@@ -165,6 +175,8 @@ void to_state(VectorNd& q, VectorNd& qd, VectorNd qdd, std::vector<SpatialVector
             j += 6; 
         }
     }
+
+    return state;
 }
 
 // reinforcement learning is prone to diverge, we set torques to prevent from divergence
@@ -207,15 +219,15 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     }
 
     //tau = 0, this is the trigger for the agent
-    double q_max = 0.05;
+    double q_max = 0.25;
 
-    auto act_val = ac.forward(state);
-    action = std::get<0>(ac.forward(state));
-    value = std::get<1>(ac.forward(state));
-    // std::cout << "test:\n" << std::get<0>(ac.forward(state)) << std::endl;
+    auto act_val = ac->forward(states[c]);
+    actions[c] = std::get<0>(act_val); // thats the bug! pushs back
+    values[c] = std::get<1>(act_val);
+
 
     for(unsigned int i=3; i<model.qdot_size; i++){ // floating base shouldnt be able to actuate the spider, hence i=3              
-        tau[i] = *(action.data<double>() + (i-3));
+        tau[i] = *(actions[c].data<double>() + (i-3));
         tau[i] *= q_max;
     }
 
@@ -223,7 +235,6 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
                                        q_off.bottomRows(no_float), 
                                        qd.bottomRows(no_float), q_max, 0.01);
-
 
     for (unsigned int i=0; i<ballIds.size(); i++){
 
@@ -326,6 +337,7 @@ int main(int argc, char** argv) {
     std::string fileName;
     std::string outLoc;
     std::vector<double> v_init(3, 0.);
+    uint n_epochs = 0;
 
     printf("Run with -h to get help.\n");
 
@@ -348,12 +360,19 @@ int main(int argc, char** argv) {
             outLoc = argv[i+1];
         }
 
+        if (!strcmp(argv[i], "-e")) {
+
+            n_epochs = std::stoi(argv[i+1]);
+        }
+
+
         if (!strcmp(argv[i], "-h")) {
 
             std::cout << "Flags\n" <<
                 "for the model with -m /location/of/lua.lua\n" <<
-                "for the initial velocity with -v 0.01" << 
-                "for the output location with -o /output/location/" << std::endl;
+                "for the initial velocity with -v 0.01\n" << 
+                "for the output location with -o /output/location/\n" <<
+                "for the number of epochs with -e number_of_epochs" << std::endl;
         }
     }
 
@@ -400,17 +419,17 @@ int main(int argc, char** argv) {
 
     //Friction model terms. See
     // ContactToolkit::createRegularizedFrictionCoefficientCurve for details
-    staticFrictionSpeed        = 0.001;
-    staticFrictionCoefficient  = 0.8;
-    dynamicFrictionSpeed       = 0.01;
-    dynamicFrictionCoefficient = 0.6;
-    viscousFrictionSlope       = 0.1;
+    staticFrictionSpeed        = 0.008;//0.001;
+    staticFrictionCoefficient  = 6.4;//0.8;
+    dynamicFrictionSpeed       = 0.08;//0.01;
+    dynamicFrictionCoefficient = 4.8;//0.6;
+    viscousFrictionSlope       = 0.8;//0.1;
     veps = staticFrictionSpeed/100.0;
 
     angleAtZeroTorque = 0; // offset for the joint torques is set via calcValue(...)
-    dangle = M_PI/4.;
+    dangle = M_PI/2.;
     stiffnessAtLowTorque = 0;      
-    stiffnessAtOneNormTorque = 1.1/std::abs(angleAtZeroTorque-dangle); // minimum possible stiffness
+    stiffnessAtOneNormTorque = 10;//1.1/std::abs(angleAtZeroTorque-dangle); // minimum possible stiffness
     curviness = 1;
 
     //If veps is too small, we really might have problems
@@ -426,10 +445,14 @@ int main(int argc, char** argv) {
     qd_init  = VectorNd::Zero(model.dof_count);
     qdd_init = VectorNd::Zero(model.dof_count);
 
-    q_off = VectorNd::Constant(model.dof_count, M_PI/2.);
+    q_off = VectorNd::Zero(model.dof_count);
+    // q_off.bottomRows(model.dof_count-3) << M_PI/2., -M_PI/2., -M_PI/2., M_PI/2., M_PI/2., -M_PI/2., -M_PI/2., M_PI/2.;
+    q_off.bottomRows(model.dof_count-3) << M_PI/4., -M_PI/4., -M_PI/4., M_PI/4., M_PI/4., -M_PI/4., -M_PI/4., M_PI/4.;
 
-    q[1] = 0.3; //ball starts 0.3m off the ground
-    q.bottomRows(model.dof_count-3) << 2.0, -1.5, -2.0, 1.5, 2.0, -1.5, -2.0, 1.5;
+    // q[1] = 0.8; //ball starts 0.3m off the ground
+    q[1] = CalcBaseToBodyCoordinates(model, q_off, model.GetBodyId(ballNames[ballNames.size()-1].c_str()), Vector3d::Zero())[2]+ballRadii[ballRadii.size()-1];
+    // q.bottomRows(model.dof_count-3) << 2.0, -1.5, -2.0, 1.5, 2.0, -1.5, -2.0, 1.5;
+    q.bottomRows(model.dof_count-3) = q_off.bottomRows(model.dof_count-3);
     qd[0]= v_init[0];
     qd[1]= v_init[1];
     qd[2]= v_init[2];
@@ -437,6 +460,12 @@ int main(int argc, char** argv) {
     q_init = q;
     qd_init = qd;
     qdd_init = qdd;
+
+    // Get current coordinates.
+    x_new = CalcBodyToBaseCoordinates(model, q, model.GetBodyId("Body"), Vector3d::Zero())[0];
+    z_new = CalcBodyToBaseCoordinates(model, q, model.GetBodyId("Body"), Vector3d::Zero())[2];
+    x_old = x_new;
+    z_old = z_new;
 
     for(unsigned int i=0; i<q.rows();++i){
         x(i) =q[i];
@@ -458,42 +487,18 @@ int main(int argc, char** argv) {
 
     // ------------------ DEEP LEARNING
     uint steps = 128;
-    uint epochs = 2;//5;
+    uint epochs = n_epochs;
     uint mini_batch_size = 16;
     uint ppo_epochs = uint(steps/mini_batch_size);
 
-    int64_t n_in = model.dof_count*3;// + fext.size()*6; // q, qd, qdd, fext
+    int64_t n_in = model.dof_count*3 + int(fext.size())*6; // q, qd, qdd, fext
     int64_t n_out = model.dof_count - 3; // control tau
     double std = 1e-2;
 
     ac = ActorCritic(n_in, n_out, std); // Cost?
-    ac.normal(0., 1e-2);
-    ac.to(torch::kFloat64);
-    torch::optim::Adam opt(ac.parameters(), 1e-3);
-
-    state = torch::zeros({1, n_in}, torch::kFloat64);
-    action = torch::zeros({1, n_out}, torch::kFloat64);
-    reward = torch::zeros({1, 1}, torch::kFloat64);
-    next_state = torch::zeros({1, n_in}, torch::kFloat64);
-    done = torch::zeros({1, 1}, torch::kFloat64);
-
-    log_prob = torch::zeros({1, n_out}, torch::kFloat64);
-    value = torch::zeros({1, 1}, torch::kFloat64);
-
-    states = VT(steps, torch::ones({1, n_in}, torch::kFloat64));
-    actions = VT(steps, torch::zeros({1, n_out}, torch::kFloat64));
-    rewards = VT(steps, torch::zeros({1, 1}, torch::kFloat64));
-    next_states = VT(steps, torch::zeros({1, n_in}, torch::kFloat64));
-    dones = VT(steps, torch::zeros({1, 1}, torch::kFloat64));
-
-    log_probs = VT(steps, torch::zeros({1, n_out}, torch::kFloat64));
-    values = VT(steps+1, torch::zeros({1, 1}, torch::kFloat64));
-    returns = VT(steps, torch::zeros({1, 1}, torch::kFloat64));
-    advantages = VT(steps, torch::zeros({1, 1}, torch::kFloat64));
-
-    // Policy and values.
-
-    to_state(q, qd, qdd, fext, state, false);
+    ac->normal(0., 1e-2);
+    ac->to(torch::kFloat64);
+    torch::optim::Adam opt(ac->parameters(), 1e-3);
 
     // ------------------ USE THE INTEGRATOR SCHEME
     double t = 0.;
@@ -511,7 +516,7 @@ int main(int argc, char** argv) {
     }
     matrixData.push_back(rowData);
 
-    uint c = 0;
+    c = 0;
 
     // Store results after each episode.
     std::string emptyHeader("");
@@ -525,6 +530,9 @@ int main(int argc, char** argv) {
         printf("epoch %d/%d\n", e+1, epochs);
 
         for(uint i=0; i <= npts; i++){
+
+            // Get current state of the environment.
+            states.push_back(to_state(q, qd, qdd, fext, true));
 
             // printf("iteration %d/%d\n", i, npts);
 
@@ -540,34 +548,34 @@ int main(int argc, char** argv) {
             // size_t num_of_steps = integrate_const(implicit_euler < double >(),
             //                                       std::make_pair( System(IncyWincy) , NumericalJacobian(IncyWincy) ) ,
             //                                       x, tp, t, dt); // diverges on impact
+            actions.push_back(torch::zeros({1,n_out}, torch::kF64));
+            values.push_back(torch::zeros({1,1}, torch::kF64));
+            
             size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 5.0e-2 , 5.0e-2 ),
                                                   System(IncyWincy), // within the system we want the agent to perform actions
                                                   x, tp, t, dt); // fast and explicit
 
+            // Get the new coordinates.
+            x_new = CalcBodyToBaseCoordinates(model, q, model.GetBodyId("Body"), Vector3d::Zero())[0];
+            z_new = CalcBodyToBaseCoordinates(model, q, model.GetBodyId("Body"), Vector3d::Zero())[2];
+
             // Insert state, action, reward, next_state and done into memory.
             v_x = CalcPointVelocity(model,q,qd,model.GetBodyId("Body"),Vector3d::Zero(),true)[0];
             n_z = (CalcBodyWorldOrientation(model, q, model.GetBodyId("Body"), false)*eN0).transpose()*eN0;
-            reward[0][0] = compute_reward(v_x, n_z, tau);
-            to_state(q, qd, qdd, fext, next_state, false);
-            done[0][0] = (reset ? 1. : 0.);
+            // reward[0][0] = compute_reward(v_x, n_z, tau);
+            rewards.push_back(compute_reward(x_old, x_new, z_old, z_new, n_z, tau, reset));
+            dones.push_back(torch::full({1,1}, (reset ? 1. : 0.), torch::kF64));
 
-            log_prob = ac.log_prob(action);
+            x_old = x_new;
+            z_old = z_new;
 
-            // mem.insert(std::make_tuple(state, action, reward, next_state, done));
-            states[c].copy_(state);
-            rewards[c].copy_(reward);
-            actions[c].copy_(action);
-            next_states[c].copy_(next_state);
-            dones[c].copy_(done);
-
-            log_probs[c].copy_(log_prob);
-            values[c].copy_(value);
+            log_probs.push_back(ac->log_prob(actions[c]));
 
             c++;
 
             if (c%steps==0)
             {
-                values[c].copy_(std::get<1>(ac.forward(next_state)));
+                values.push_back(std::get<1>(ac->forward(states[c-1])));
 
                 returns = PPO::returns(rewards, dones, values, .99, .95);
 
@@ -581,9 +589,16 @@ int main(int argc, char** argv) {
                 PPO::update(ac, stas, acts, logs, rets, advs, opt, steps, ppo_epochs, 8);
 
                 c = 0;
-            }
 
-            state.copy_(next_state);
+                states.clear();
+                actions.clear();
+                rewards.clear();
+                dones.clear();
+
+                log_probs.clear();
+                values.clear();
+                returns.clear();
+            }
 
             tp = t;
 
@@ -600,8 +615,6 @@ int main(int argc, char** argv) {
                 q = q_init;
                 qd = qd_init;
                 qdd = qdd_init;
-
-                to_state(q, qd, qdd, fext, state, false);
 
                 for(unsigned int j=0; j<q.rows();++j){
                     x(j) =q_init[j];
@@ -625,23 +638,18 @@ int main(int argc, char** argv) {
         std::string fileNameOut(outLoc + "animation_ii_vinit_" + stream.str() + "_epoch_" + std::to_string(e+1) + ".csv");   // ii implicit integrator
         printMatrixToFile(matrixData,emptyHeader,fileNameOut);
 
-        std::cout << matrixData.size() << std::endl;
         matrixData.clear();
-        std::cout << matrixData.size() << std::endl;
 
         // Reset after each epoch.
         q = q_init;
         qd = qd_init;
         qdd = qdd_init;
 
-        to_state(q, qd, qdd, fext, state, false);
-
         for(unsigned int j=0; j<q.rows();++j){
             x(j) =q_init[j];
             x(j+q.rows()) = qd_init[j];        
         }
 
-        t += dt;
         rowData[0] = t;
         for(uint z=0; z < model.dof_count; z++){
             rowData[z+1] = x(z);
@@ -649,7 +657,7 @@ int main(int argc, char** argv) {
         matrixData.push_back(rowData);
     }
     auto time = Timer(STOP);
-    printf("Elapsed time: %f\n", time);
+    printf("Elapsed time: %.2f s\n", time/1000.);
 
     // Output time and initial velocity.
     std::ofstream out;
