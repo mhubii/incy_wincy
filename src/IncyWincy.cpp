@@ -520,9 +520,6 @@ int main(int argc, char** argv) {
 
     // Store results after each episode.
     std::string emptyHeader("");
-    std::ostringstream stream;
-    stream << std::setprecision(1);
-    stream << v_init[0] << "_" << v_init[1] << "_" << v_init[2];
 
     Timer(START);
     for (uint e=0;e<epochs;e++)
@@ -658,12 +655,6 @@ int main(int argc, char** argv) {
     }
     auto time = Timer(STOP);
     printf("Elapsed time: %.2f s\n", time/1000.);
-
-    // Output time and initial velocity.
-    std::ofstream out;
-    out.open(outLoc + "time_ii.csv", std::ios_base::app);
-    out << v_init[0] << ", " << v_init[1] << ", " << v_init[2] << ", " << time << "\n";
-    out.close();
 
     return 0;
 }
