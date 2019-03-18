@@ -2,12 +2,10 @@
 
 #include <boost/numeric/ublas/matrix.hpp>
 
-using namespace boost::numeric::ublas;
-
 
 // Some typedefs.
-using vector_type = vector< double >;
-using matrix_type = matrix< double >;
+using vector_type = boost::numeric::ublas::vector< double >;
+using matrix_type = boost::numeric::ublas::matrix< double >;
 
 
 // Function pointer of the system we want to describe.
@@ -43,7 +41,7 @@ public:
 
         for (uint i = 0; i < c; i++) {
 
-            column(J, i) = 0.5/h_*(system_(x + unit_vector<double>(c, i)*h_) - system_(x - unit_vector<double>(c, i)*h_)); // compute finite differences
+            column(J, i) = 0.5/h_*(system_(x + boost::numeric::ublas::unit_vector<double>(c, i)*h_) - system_(x - boost::numeric::ublas::unit_vector<double>(c, i)*h_)); // compute finite differences
         }
     };
 
