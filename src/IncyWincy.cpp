@@ -127,7 +127,7 @@ auto compute_reward(double v_x, double n_z, VectorNd torque, bool reset) -> torc
 
 auto compute_reward(double x_old, double x_new, double z_old, double z_new, double n_z, VectorNd torque, bool reset) -> torch::Tensor
 {
-    double r = (x_new - x_old) + (z_new - z_old) + 0.1*n_z - 0.1*torque.norm();
+    double r = 1e3*(x_new - x_old) + (z_new - z_old) + n_z - 1e2*torque.norm();
     if (reset) {
         r -= 100.;
     }
@@ -486,10 +486,14 @@ int main(int argc, char** argv) {
                                                                                curviness, "tp", jointTorqueCurve);
 
     // ------------------ DEEP LEARNING
-    uint steps = 128;
+    double avg_reward = 0.;
+    double best_reward = -std::numeric_limits<double>::max();
+    double avg_entropy = 0.;
+
+    uint steps = 5120;
     uint epochs = n_epochs;
-    uint mini_batch_size = 16;
-    uint ppo_epochs = uint(steps/mini_batch_size);
+    uint mini_batch_size = 1280;
+    uint ppo_epochs = 8;//uint(steps/mini_batch_size);
 
     int64_t n_in = model.dof_count*3 + int(fext.size())*6; // q, qd, qdd, fext
     int64_t n_out = model.dof_count - 3; // control tau
@@ -503,7 +507,7 @@ int main(int argc, char** argv) {
     // ------------------ USE THE INTEGRATOR SCHEME
     double t = 0.;
     double tp = 0.;
-    unsigned int npts = 10000;
+    unsigned int npts = 2e3;
 
     double dt = 1e-3;
 
@@ -520,6 +524,9 @@ int main(int argc, char** argv) {
 
     // Store results after each episode.
     std::string emptyHeader("");
+
+    std::ofstream out;
+    out.open(outLoc + "reward_and_entropy.csv");
 
     Timer(START);
     for (uint e=0;e<epochs;e++)
@@ -559,9 +566,12 @@ int main(int argc, char** argv) {
             // Insert state, action, reward, next_state and done into memory.
             v_x = CalcPointVelocity(model,q,qd,model.GetBodyId("Body"),Vector3d::Zero(),true)[0];
             n_z = (CalcBodyWorldOrientation(model, q, model.GetBodyId("Body"), false)*eN0).transpose()*eN0;
-            // reward[0][0] = compute_reward(v_x, n_z, tau);
+            // rewards.push_back(compute_reward(v_x, n_z, tau, reset));
             rewards.push_back(compute_reward(x_old, x_new, z_old, z_new, n_z, tau, reset));
             dones.push_back(torch::full({1,1}, (reset ? 1. : 0.), torch::kF64));
+
+            avg_reward += *(rewards[c].data<double>())/npts;
+            avg_entropy += *(ac->entropy().data<double>())/npts;
 
             x_old = x_new;
             z_old = z_new;
@@ -574,7 +584,7 @@ int main(int argc, char** argv) {
             {
                 values.push_back(std::get<1>(ac->forward(states[c-1])));
 
-                returns = PPO::returns(rewards, dones, values, .99, .95);
+                returns = PPO::returns(rewards, dones, values, .8, .95);
 
                 torch::Tensor rets = torch::cat(returns).detach();
                 torch::Tensor logs = torch::cat(log_probs).detach();
@@ -583,7 +593,7 @@ int main(int argc, char** argv) {
                 torch::Tensor acts = torch::cat(actions);
                 torch::Tensor advs = rets - vals.slice(0, 0, steps); // size mismatch between val and ret cause of next val
 
-                PPO::update(ac, stas, acts, logs, rets, advs, opt, steps, ppo_epochs, 8);
+                PPO::update(ac, stas, acts, logs, rets, advs, opt, steps, ppo_epochs, mini_batch_size, 1e-3);
 
                 c = 0;
 
@@ -630,6 +640,17 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (avg_reward > best_reward)
+        {
+            best_reward = avg_reward;
+            torch::save(ac, "models/best_model_at_epoch_" + std::to_string(e+1) + ".pt");
+        }
+
+        out << e+1 << ", " << avg_reward << ", " << avg_entropy << "\n";
+
+        avg_reward = 0.;
+        avg_entropy = 0.;
+
         t = 0.;
 
         std::string fileNameOut(outLoc + "animation_epoch_" + std::to_string(e+1) + ".csv");   // ii implicit integrator
@@ -655,6 +676,8 @@ int main(int argc, char** argv) {
     }
     auto time = Timer(STOP);
     printf("Elapsed time: %.2f s\n", time/1000.);
+
+    out.close();
 
     return 0;
 }

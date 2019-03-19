@@ -129,7 +129,7 @@ auto compute_reward(double v_x, double n_z, VectorNd torque, bool reset) -> torc
 
 auto compute_reward(double y_old, double y_new, double n_z, VectorNd torque, bool reset) -> torch::Tensor
 {
-    double r = 1e3*(y_new - y_old) + n_z - 1e2*torque.norm();
+    double r = 1e3*(y_new - y_old) + n_z - 1e1*torque.norm();
     if (reset) {
         r -= 100.;
     }
@@ -502,7 +502,7 @@ int main(int argc, char** argv) {
 
     uint steps = 1024;
     uint epochs = n_epochs;
-    uint mini_batch_size = 256;
+    uint mini_batch_size = 512;
     uint ppo_epochs = 4;//uint(steps/mini_batch_size);
 
     int64_t n_in = model.dof_count*3 + int(fext.size())*6; // q, qd, qdd, fext
@@ -512,7 +512,7 @@ int main(int argc, char** argv) {
     ac = ActorCritic(n_in, n_out, std); // Cost?
     ac->normal(0., 1e-1);
     ac->to(torch::kFloat64);
-    torch::optim::Adam opt(ac->parameters(), 1e-2);
+    torch::optim::Adagrad opt(ac->parameters(), 1e-2);
 
     // ------------------ USE THE INTEGRATOR SCHEME
     double t = 0.;
@@ -545,6 +545,8 @@ int main(int argc, char** argv) {
 
         for(uint i=0; i <= npts; i++){
 
+            printf("\riter %d/%d", i, npts);
+
             // Get current state of the environment.
             states.push_back(to_state(q, qd, qdd, fext, true));
 
@@ -555,7 +557,7 @@ int main(int argc, char** argv) {
             actions.push_back(torch::zeros({1,n_out}, torch::kF64));
             values.push_back(torch::zeros({1,1}, torch::kF64));
 
-            size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 2.0e-2 , 2.0e-2),
+            size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 1.0e-2 , 1.0e-2),
                                                   System(IncyWincy), // within the system we want the agent to perform actions
                                                   x, tp, t, dt); // fast and explicit
 
@@ -572,7 +574,7 @@ int main(int argc, char** argv) {
                 values.clear();
                 returns.clear();
 
-                printf("Nan encountered, stopping current epoch.\n");
+                printf("\nNan encountered, stopping current epoch.\n");
                 break; 
             }
             else 
@@ -584,8 +586,8 @@ int main(int argc, char** argv) {
                 // Insert state, action, reward, next_state and done into memory.
                 v_x = CalcPointVelocity(model,q,qd,model.GetBodyId("Body"),Vector3d::Zero(),true)[0];
                 n_z = (CalcBodyWorldOrientation(model, q, model.GetBodyId("Body"), false)*eN0).transpose()*eN0;
-                // rewards.push_back(compute_reward(v_x, n_z, tau, reset));
-                rewards.push_back(compute_reward(y_old, y_new, n_z, tau, reset));
+                rewards.push_back(compute_reward(v_x, n_z, tau, reset));
+                // rewards.push_back(compute_reward(y_old, y_new, n_z, tau, reset));
                 dones.push_back(torch::full({1,1}, (reset ? 1. : 0.), torch::kF64));
 
                 avg_reward += *(rewards[c].data<double>())/npts;
@@ -671,6 +673,8 @@ int main(int argc, char** argv) {
                 std::string fileNameOut(outLoc + "animation_epoch_" + std::to_string(e+1) + ".csv");   // ii implicit integrator
                 printMatrixToFile(matrixData,emptyHeader,fileNameOut);
         }
+
+        printf("\naverage reward %f\n", avg_reward);
 
         notanumber = false;
 
