@@ -22,3 +22,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_executable(incyWincy src/IncyWincy.cpp src/csvtools.cpp) 
 target_link_libraries(incyWincy ${rbdl_LIBRARY} ${rbdl_luamodel_LIBRARY} ${rbdl_geometry_LIBRARY} ${rbdl_muscle_LIBRARY} ${TORCH_LIBRARIES})
+
+add_executable(incyWincyDev src/IncyWincyDev.cpp src/csvtools.cpp) 
+target_link_libraries(incyWincyDev ${rbdl_LIBRARY} ${rbdl_luamodel_LIBRARY} ${rbdl_geometry_LIBRARY} ${rbdl_muscle_LIBRARY} ${TORCH_LIBRARIES})
