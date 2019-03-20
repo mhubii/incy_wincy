@@ -116,10 +116,10 @@ bool notanumber = false;
 uint c; // counter
 
 
-auto compute_reward(double v_x, double n_z, VectorNd torque, bool reset) -> torch::Tensor
+auto compute_reward(double v_y, double n_z, VectorNd torque, bool reset) -> torch::Tensor
 {
-    // r = v_x + 0.05 n_z + (z>0 or sth) - 0.01 |torque|
-    double r = v_x + 0.1*n_z - 0.1*torque.norm();
+    // r = v_y + 0.05 n_z + (z>0 or sth) - 0.01 |torque|
+    double r = v_y + 0.1*n_z - 0.1*torque.norm();
     if (reset) {
         r -= 100.;
     }
@@ -137,7 +137,7 @@ auto compute_reward(double y_old, double y_new, double n_z, VectorNd torque, boo
     return reward;
 }
 
-double v_x;
+double v_y;
 double n_z;
 
 auto to_state(VectorNd& q, VectorNd& qd, VectorNd qdd, std::vector<SpatialVector>& fext, bool ext=false) -> torch::Tensor
@@ -584,9 +584,9 @@ int main(int argc, char** argv) {
                 y_new = CalcBodyToBaseCoordinates(model, q, model.GetBodyId("Body"), Vector3d::Zero())[1];
 
                 // Insert state, action, reward, next_state and done into memory.
-                v_x = CalcPointVelocity(model,q,qd,model.GetBodyId("Body"),Vector3d::Zero(),true)[0];
+                v_y = CalcPointVelocity(model,q,qd,model.GetBodyId("Body"),Vector3d::Zero(),true)[1];
                 n_z = (CalcBodyWorldOrientation(model, q, model.GetBodyId("Body"), false)*eN0).transpose()*eN0;
-                rewards.push_back(compute_reward(v_x, n_z, tau, reset));
+                rewards.push_back(compute_reward(v_y, n_z, tau, reset));
                 // rewards.push_back(compute_reward(y_old, y_new, n_z, tau, reset));
                 dones.push_back(torch::full({1,1}, (reset ? 1. : 0.), torch::kF64));
 
