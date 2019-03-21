@@ -121,7 +121,7 @@ auto compute_reward(double v_y, double n_z, VectorNd torque, bool reset) -> torc
     // r = v_y + 0.05 n_z + (z>0 or sth) - 0.01 |torque|
     double r = v_y + 0.1*n_z - 0.1*torque.norm();
     if (reset) {
-        r -= 100.;
+        r -= 10.;
     }
     torch::Tensor reward = torch::full({1,1}, r, torch::kF64);
     return reward;
@@ -131,7 +131,7 @@ auto compute_reward(double y_old, double y_new, double n_z, VectorNd torque, boo
 {
     double r = 1e3*(y_new - y_old) + n_z - 1e1*torque.norm();
     if (reset) {
-        r -= 100.;
+        r -= 10.;
     }
     torch::Tensor reward = torch::full({1,1}, r, torch::kF64);
     return reward;
@@ -141,8 +141,15 @@ double v_y;
 double n_z;
 
 auto to_state(VectorNd& q, VectorNd& qd, VectorNd qdd, std::vector<SpatialVector>& fext, bool ext=false) -> torch::Tensor
-{
-    torch::Tensor state = torch::zeros({1, model.dof_count*3 + int(fext.size())*6}, torch::kF64);
+{    
+    torch::Tensor state;
+    if (ext) {
+        state = torch::zeros({1, model.dof_count*3 + int(fext.size())*6}, torch::kF64);
+    }
+    else
+    {
+        state = torch::zeros({1, model.dof_count*3}, torch::kF64);
+    }
 
     uint j = 0;
 
@@ -220,26 +227,26 @@ auto IncyWincy(const vector_type& x) -> vector_type {
         j++;
     }
 
-    //tau = 0, this is the trigger for the agent
-    double q_max = 0.25;
+    // //tau = 0, this is the trigger for the agent
+    // double q_max = 0.25;
 
-    auto act_val = ac->forward(states[c]);
-    actions[c] = std::get<0>(act_val); // thats the bug! pushs back
-    values[c] = std::get<1>(act_val);
+    // auto act_val = ac->forward(states[c]);
+    // actions[c] = std::get<0>(act_val); // thats the bug! pushs back
+    // values[c] = std::get<1>(act_val);
 
-    tau.setZero();
-    for(int i = 0; i < idx.size(); i++){             
-        tau[idx[i]+3] = *(actions[c].data<double>() + i);
-        tau[idx[i]+3] *= q_max;
-        if (tau[idx[i]+3] != tau[idx[i]+3]) {
-            notanumber = true;
-        }
-    }
+    // tau.setZero();
+    // for(int i = 0; i < idx.size(); i++){             
+    //     tau[idx[i]+3] = *(actions[c].data<double>() + i);
+    //     tau[idx[i]+3] *= q_max;
+    //     if (tau[idx[i]+3] != tau[idx[i]+3]) {
+    //         notanumber = true;
+    //     }
+    // }
 
-    int no_float = model.q_size-3; // no floating base
-    tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
-                                       q_off.bottomRows(no_float), 
-                                       qd.bottomRows(no_float), q_max, 0.01);
+    // int no_float = model.q_size-3; // no floating base
+    // tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
+    //                                    q_off.bottomRows(no_float), 
+    //                                    qd.bottomRows(no_float), q_max, 0.01);
 
     for (unsigned int i=0; i<ballIds.size(); i++){
 
@@ -252,10 +259,10 @@ auto IncyWincy(const vector_type& x) -> vector_type {
         dz=0.; //this is zero until contact is made
 
         if( z < 0. ){
-            // if (!strcmp(model.GetBodyName(ballIds[i]).c_str(), "Body"))
-            // {
-            //     reset = true;
-            // }
+            if (!strcmp(model.GetBodyName(ballIds[i]).c_str(), "Body"))
+            {
+                reset = true;
+            }
 
             //Get the point of contact resolved in the coordinates of the ball          
             EB0   = CalcBodyWorldOrientation(model,q,ballIds[i],true);
@@ -349,6 +356,7 @@ int main(int argc, char** argv) {
     std::string outLoc;
     std::vector<double> v_init(3, 0.);
     uint n_epochs = 0;
+    std::string pretrained_model;
 
     printf("Run with -h to get help.\n");
 
@@ -376,6 +384,11 @@ int main(int argc, char** argv) {
             n_epochs = std::stoi(argv[i+1]);
         }
 
+        if (!strcmp(argv[i], "-p")) {
+
+            pretrained_model =argv[i+1];
+        }
+
 
         if (!strcmp(argv[i], "-h")) {
 
@@ -383,7 +396,8 @@ int main(int argc, char** argv) {
                 "for the model with -m /location/of/lua.lua\n" <<
                 "for the initial velocity with -v 0.01\n" << 
                 "for the output location with -o /output/location/\n" <<
-                "for the number of epochs with -e number_of_epochs" << std::endl;
+                "for the number of epochs with -e number_of_epochs\n" << 
+                "for a pretrained model with -p /location/of/model.pt" <<std::endl;
         }
     }
 
@@ -430,17 +444,17 @@ int main(int argc, char** argv) {
 
     //Friction model terms. See
     // ContactToolkit::createRegularizedFrictionCoefficientCurve for details
-    staticFrictionSpeed        = 0.008;//0.001;
-    staticFrictionCoefficient  = 6.4;//0.8;
-    dynamicFrictionSpeed       = 0.08;//0.01;
-    dynamicFrictionCoefficient = 4.8;//0.6;
-    viscousFrictionSlope       = 0.8;//0.1;
+    staticFrictionSpeed        = 0.001;// 0.008;//0.001;
+    staticFrictionCoefficient  = 0.8;// 6.4;  //0.8;
+    dynamicFrictionSpeed       = 0.01;// 0.08; //0.01;
+    dynamicFrictionCoefficient = 0.6;// 4.8;  //0.6;
+    viscousFrictionSlope       = 0.1;// 0.1;  //0.1;
     veps = staticFrictionSpeed/100.0;
 
     angleAtZeroTorque = 0; // offset for the joint torques is set via calcValue(...)
     dangle = M_PI/4.;
     stiffnessAtLowTorque = 0;      
-    stiffnessAtOneNormTorque = 10;//1.1/std::abs(angleAtZeroTorque-dangle); // minimum possible stiffness
+    stiffnessAtOneNormTorque = 2.;//1.1/std::abs(angleAtZeroTorque-dangle); // minimum possible stiffness
     curviness = 1;
 
     //If veps is too small, we really might have problems
@@ -508,11 +522,17 @@ int main(int argc, char** argv) {
     int64_t n_in = model.dof_count*3 + int(fext.size())*6; // q, qd, qdd, fext
     int64_t n_out = 8;//model.dof_count - 3; // control tau
     double std = 1e-2;
+    double mu_max = 0.25;
 
-    ac = ActorCritic(n_in, n_out, std); // Cost?
+    ac = ActorCritic(n_in, n_out, mu_max, std); // Cost?
     ac->normal(0., 1e-1);
     ac->to(torch::kFloat64);
-    torch::optim::Adagrad opt(ac->parameters(), 1e-2);
+
+    if (!pretrained_model.empty()) {
+        torch::load(ac, pretrained_model);
+    }
+
+    torch::optim::Adam opt(ac->parameters(), 1e-3);
 
     // ------------------ USE THE INTEGRATOR SCHEME
     double t = 0.;
@@ -554,10 +574,26 @@ int main(int argc, char** argv) {
 
             t += dt;
 
-            actions.push_back(torch::zeros({1,n_out}, torch::kF64));
-            values.push_back(torch::zeros({1,1}, torch::kF64));
+            // actions.push_back(torch::zeros({1,n_out}, torch::kF64));
+            // values.push_back(torch::zeros({1,1}, torch::kF64));    //tau = 0, this is the trigger for the agent
+            auto act_val = ac->forward(states[c]);
+            actions.push_back(std::get<0>(act_val)); // thats the bug! pushs back
+            values.push_back(std::get<1>(act_val));
 
-            size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 1.0e-2 , 1.0e-2),
+            tau.setZero();
+            for(int i = 0; i < idx.size(); i++){             
+                tau[idx[i]+3] = *(actions[c].data<double>() + i);
+                if (tau[idx[i]+3] != tau[idx[i]+3]) {
+                    notanumber = true;
+                }
+            }
+
+            int no_float = model.q_size-3; // no floating base
+            tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
+                                               q_off.bottomRows(no_float), 
+                                               qd.bottomRows(no_float), mu_max, 0.01);
+
+            size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-1 , 1e-1),
                                                   System(IncyWincy), // within the system we want the agent to perform actions
                                                   x, tp, t, dt); // fast and explicit
 
@@ -601,6 +637,7 @@ int main(int argc, char** argv) {
 
                 if (c%steps==0)
                 {
+                    printf("Updating network.\n");
                     values.push_back(std::get<1>(ac->forward(states[c-1])));
 
                     returns = PPO::returns(rewards, dones, values, .8, .95);
