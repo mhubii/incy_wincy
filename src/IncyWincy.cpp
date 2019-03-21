@@ -140,7 +140,15 @@ double n_z;
 
 auto to_state(VectorNd& q, VectorNd& qd, VectorNd qdd, std::vector<SpatialVector>& fext, bool ext=false) -> torch::Tensor
 {
-    torch::Tensor state = torch::zeros({1, model.dof_count*3 + int(fext.size())*6}, torch::kF64);
+    torch::Tensor state;
+    if (ext) {
+        state = torch::zeros({1, model.dof_count*3 + int(fext.size())*6}, torch::kF64);
+    }
+    else
+    {
+        state = torch::zeros({1, model.dof_count*3}, torch::kF64);
+    }
+
 
     uint j = 0;
 
@@ -499,7 +507,7 @@ int main(int argc, char** argv) {
     int64_t n_out = model.dof_count - 3; // control tau
     double std = 1e-2;
 
-    ac = ActorCritic(n_in, n_out, std); // Cost?
+    ac = ActorCritic(n_in, n_out, 0.25, std); // Cost?
     ac->normal(0., 1e-2);
     ac->to(torch::kFloat64);
     torch::optim::Adam opt(ac->parameters(), 1e-3);
