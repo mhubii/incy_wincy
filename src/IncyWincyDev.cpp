@@ -227,26 +227,21 @@ auto IncyWincy(const vector_type& x) -> vector_type {
         j++;
     }
 
-    // //tau = 0, this is the trigger for the agent
-    // double q_max = 0.25;
+    //tau = 0, this is the trigger for the agent
+    double q_max = 0.25;
 
-    // auto act_val = ac->forward(states[c]);
-    // actions[c] = std::get<0>(act_val); // thats the bug! pushs back
-    // values[c] = std::get<1>(act_val);
+    tau.setZero();
+    for(int i = 0; i < idx.size(); i++){             
+        tau[idx[i]+3] = *(actions[c].data<double>() + i);
+        if (tau[idx[i]+3] != tau[idx[i]+3]) {
+            notanumber = true;
+        }
+    }
 
-    // tau.setZero();
-    // for(int i = 0; i < idx.size(); i++){             
-    //     tau[idx[i]+3] = *(actions[c].data<double>() + i);
-    //     tau[idx[i]+3] *= q_max;
-    //     if (tau[idx[i]+3] != tau[idx[i]+3]) {
-    //         notanumber = true;
-    //     }
-    // }
-
-    // int no_float = model.q_size-3; // no floating base
-    // tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
-    //                                    q_off.bottomRows(no_float), 
-    //                                    qd.bottomRows(no_float), q_max, 0.01);
+    int no_float = model.q_size-3; // no floating base
+    tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
+                                       q_off.bottomRows(no_float), 
+                                       qd.bottomRows(no_float), q_max, 0.01);
 
     for (unsigned int i=0; i<ballIds.size(); i++){
 
@@ -516,13 +511,13 @@ int main(int argc, char** argv) {
 
     uint steps = 1024;
     uint epochs = n_epochs;
-    uint mini_batch_size = 512;
+    uint mini_batch_size = 256;
     uint ppo_epochs = 4;//uint(steps/mini_batch_size);
 
     int64_t n_in = model.dof_count*3 + int(fext.size())*6; // q, qd, qdd, fext
     int64_t n_out = 8;//model.dof_count - 3; // control tau
     double std = 1e-2;
-    double mu_max = 0.25;
+    double mu_max = 0.5;
 
     ac = ActorCritic(n_in, n_out, mu_max, std); // Cost?
     ac->normal(0., 1e-1);
@@ -574,26 +569,14 @@ int main(int argc, char** argv) {
 
             t += dt;
 
-            // actions.push_back(torch::zeros({1,n_out}, torch::kF64));
-            // values.push_back(torch::zeros({1,1}, torch::kF64));    //tau = 0, this is the trigger for the agent
+            actions.push_back(torch::zeros({1,n_out}, torch::kF64));
+            values.push_back(torch::zeros({1,1}, torch::kF64));    
+
             auto act_val = ac->forward(states[c]);
-            actions.push_back(std::get<0>(act_val)); // thats the bug! pushs back
+            actions.push_back(std::get<0>(act_val));
             values.push_back(std::get<1>(act_val));
 
-            tau.setZero();
-            for(int i = 0; i < idx.size(); i++){             
-                tau[idx[i]+3] = *(actions[c].data<double>() + i);
-                if (tau[idx[i]+3] != tau[idx[i]+3]) {
-                    notanumber = true;
-                }
-            }
-
-            int no_float = model.q_size-3; // no floating base
-            tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
-                                               q_off.bottomRows(no_float), 
-                                               qd.bottomRows(no_float), mu_max, 0.01);
-
-            size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-1 , 1e-1),
+            size_t num_of_steps = integrate_adaptive(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-2 , 1e-2),
                                                   System(IncyWincy), // within the system we want the agent to perform actions
                                                   x, tp, t, dt); // fast and explicit
 
@@ -637,7 +620,7 @@ int main(int argc, char** argv) {
 
                 if (c%steps==0)
                 {
-                    printf("Updating network.\n");
+                    printf("\nUpdating network.\n");
                     values.push_back(std::get<1>(ac->forward(states[c-1])));
 
                     returns = PPO::returns(rewards, dones, values, .8, .95);
