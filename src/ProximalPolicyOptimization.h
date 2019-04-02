@@ -21,7 +21,8 @@ class PPO
 public:
     static auto returns(VT& rewards, VT& dones, VT& vals, double gamma, double lambda) -> VT; // Generalized advantage estimate, https://arxiv.org/abs/1506.02438
     static auto update(ActorCritic& ac,
-                       torch::Tensor& states,
+                       torch::Tensor& q_states,
+                       torch::Tensor& fext_states,
                        torch::Tensor& actions,
                        torch::Tensor& log_probs,
                        torch::Tensor& returns,
@@ -49,7 +50,8 @@ auto PPO::returns(VT& rewards, VT& dones, VT& vals, double gamma, double lambda)
 }
 
 auto PPO::update(ActorCritic& ac,
-                 torch::Tensor& states,
+                 torch::Tensor& q_states,
+                 torch::Tensor& fext_states,
                  torch::Tensor& actions,
                  torch::Tensor& log_probs,
                  torch::Tensor& returns,
@@ -70,8 +72,8 @@ auto PPO::update(ActorCritic& ac,
 
         for (auto& i: idx)
         {
-            auto av = ac->forward(states[i]); // action value pairs
-            auto action = std::get<0>(av);
+            auto av = ac->forward(q_states[i].unsqueeze(0), fext_states[i].unsqueeze(0)); // action value pairs
+            auto action = std::get<0>(av).squeeze();
             auto entropy = ac->entropy();
             auto new_log_prob = ac->log_prob(actions[i]);
 
@@ -80,8 +82,8 @@ auto PPO::update(ActorCritic& ac,
             auto surr1 = ratio*advantages[i];
             auto surr2 = torch::clamp(ratio, 1. - clip_param, 1. + clip_param)*advantages[i];
 
-            auto val = std::get<1>(av);
-            auto actor_loss = -torch::min(surr1, surr2);
+            auto val = std::get<1>(av).squeeze();
+            auto actor_loss = -torch::min(surr1, surr2).squeeze();
             auto critic_loss = (returns[i]-val).pow(2);
 
             auto loss = 0.5*critic_loss+actor_loss-beta*entropy;
