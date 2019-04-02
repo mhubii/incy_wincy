@@ -667,19 +667,9 @@ int main(int argc, char** argv) {
             actions.push_back(std::get<0>(act_val));
             values.push_back(std::get<1>(act_val));
 
-<<<<<<< HEAD
             size_t num_of_steps = integrate_adaptive(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-3 , 1e-3),
                                                      System(IncyWincy), // within the system we want the agent to perform actions
                                                      x, tp, t, dt); // fast and explicit
-=======
-<<<<<<< HEAD
-            size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-3 , 1e-3),
-=======
-            size_t num_of_steps = integrate_adaptive(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-2 , 1e-2),
->>>>>>> 56a977d41e1fc1344c2708cfd3647bca141b495e
-                                                  System(IncyWincy), // within the system we want the agent to perform actions
-                                                  x, tp, t, dt); // fast and explicit
->>>>>>> 107740d637ea2f81ab2c4f37a3b85fc6a80b26e4
 
             if (notanumber) 
             {
