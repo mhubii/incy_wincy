@@ -238,17 +238,8 @@ auto IncyWincy(const vector_type& x) -> vector_type {
         j++;
     }
 
-<<<<<<< HEAD
-    // //tau = 0, this is the trigger for the agent
-    // double q_max = 0.25;
-
-    // auto act_val = ac->forward(states[c]);
-    // actions[c] = std::get<0>(act_val); // thats the bug! pushs back
-    // values[c] = std::get<1>(act_val);
-=======
     //tau = 0, this is the trigger for the agent
     double q_max = 0.25;
->>>>>>> 56a977d41e1fc1344c2708cfd3647bca141b495e
 
     tau.setZero();
     for(int i = 0; i < idx.size(); i++){             
@@ -265,11 +256,7 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     int no_float = model.q_size-3; // no floating base
     tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
                                        q_off.bottomRows(no_float), 
-<<<<<<< HEAD
-                                       qd.bottomRows(no_float), 0.25, 0.01);
-=======
                                        qd.bottomRows(no_float), q_max, 0.01);
->>>>>>> 56a977d41e1fc1344c2708cfd3647bca141b495e
 
     for (auto& f: fext) { // set forces to zero prior to each iteration
         for (auto& f_i : f){
@@ -618,21 +605,11 @@ int main(int argc, char** argv) {
     int64_t n_in_mod = model.dof_count*3; // q, qd, qdd
     int64_t n_in_env = int(fext_feet.size())*6; // fext
     int64_t n_out = 8;//model.dof_count - 3; // control tau
-<<<<<<< HEAD
     double std = 1e-4;
     double mu_max = 1e-1;
-=======
-    double std = 1e-2;
-    double mu_max = 0.5;
->>>>>>> 56a977d41e1fc1344c2708cfd3647bca141b495e
 
-<<<<<<< HEAD
     ac = ActorCritic(n_in_mod, n_in_env, n_out, mu_max, std); // Cost?
     ac->normal(0., 1.e-2);
-=======
-    ac = ActorCritic(n_in, n_out, mu_max, std); // Cost?
-    ac->normal(0., 1e-2);
->>>>>>> 107740d637ea2f81ab2c4f37a3b85fc6a80b26e4
     ac->to(torch::kFloat64);
 
     if (!pretrained_model.empty()) {
