@@ -12,12 +12,13 @@ struct ActorCriticImpl : public torch::nn::Module
     torch::Tensor mu_;
     torch::Tensor log_std_;
     double mu_max_;
+    double std_max_;
 
     // Critic.
     torch::nn::Linear c_lin1_{nullptr}, c_lin2_{nullptr}, c_lin3_{nullptr}, c_lin4_{nullptr},
                       c_lin5_{nullptr}, c_lin6_{nullptr}, c_val_{nullptr};
 
-    ActorCriticImpl(int64_t n_in, int64_t n_out, double mu_max, double std)
+    ActorCriticImpl(int64_t n_in, int64_t n_out, double mu_max, double std_max)
         : // Actor.
           a_lin1_(torch::nn::Linear(n_in, 16)),
           a_lin2_(torch::nn::Linear(16, 32)),
@@ -26,8 +27,9 @@ struct ActorCriticImpl : public torch::nn::Module
           a_lin5_(torch::nn::Linear(64, 32)),
           a_lin6_(torch::nn::Linear(32, n_out)),
           mu_(torch::full(n_out, 0.)),
-          log_std_(torch::full(n_out, std, torch::kFloat64)),
+          log_std_(torch::full(n_out, std_max, torch::kFloat64)),
           mu_max_(mu_max),
+          std_max_(std_max),
           
           // Critic
           c_lin1_(torch::nn::Linear(n_in, 16)),
@@ -84,7 +86,7 @@ struct ActorCriticImpl : public torch::nn::Module
         {
             torch::NoGradGuard no_grad;
 
-            torch::Tensor action = torch::normal(mu_, log_std_.exp().expand_as(mu_));
+            torch::Tensor action = torch::normal(mu_, torch::sigmoid(log_std_.exp().expand_as(mu_).mul(std_max_)));
             return std::make_tuple(action, val);  
         }
         else 

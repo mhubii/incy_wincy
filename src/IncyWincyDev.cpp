@@ -234,19 +234,18 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     // actions[c] = std::get<0>(act_val); // thats the bug! pushs back
     // values[c] = std::get<1>(act_val);
 
-    // tau.setZero();
-    // for(int i = 0; i < idx.size(); i++){             
-    //     tau[idx[i]+3] = *(actions[c].data<double>() + i);
-    //     tau[idx[i]+3] *= q_max;
-    //     if (tau[idx[i]+3] != tau[idx[i]+3]) {
-    //         notanumber = true;
-    //     }
-    // }
+    tau.setZero();
+    for(int i = 0; i < idx.size(); i++){             
+        tau[idx[i]+3] = *(actions[c].data<double>() + i);
+        if (tau[idx[i]+3] != tau[idx[i]+3]) {
+            notanumber = true;
+        }
+    }
 
-    // int no_float = model.q_size-3; // no floating base
-    // tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
-    //                                    q_off.bottomRows(no_float), 
-    //                                    qd.bottomRows(no_float), q_max, 0.01);
+    int no_float = model.q_size-3; // no floating base
+    tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
+                                       q_off.bottomRows(no_float), 
+                                       qd.bottomRows(no_float), 0.25, 0.01);
 
     for (unsigned int i=0; i<ballIds.size(); i++){
 
@@ -454,7 +453,7 @@ int main(int argc, char** argv) {
     angleAtZeroTorque = 0; // offset for the joint torques is set via calcValue(...)
     dangle = M_PI/4.;
     stiffnessAtLowTorque = 0;      
-    stiffnessAtOneNormTorque = 2.;//1.1/std::abs(angleAtZeroTorque-dangle); // minimum possible stiffness
+    stiffnessAtOneNormTorque = 10.;//1.1/std::abs(angleAtZeroTorque-dangle); // minimum possible stiffness
     curviness = 1;
 
     //If veps is too small, we really might have problems
@@ -516,16 +515,16 @@ int main(int argc, char** argv) {
 
     uint steps = 1024;
     uint epochs = n_epochs;
-    uint mini_batch_size = 512;
+    uint mini_batch_size = 256;
     uint ppo_epochs = 4;//uint(steps/mini_batch_size);
 
     int64_t n_in = model.dof_count*3 + int(fext.size())*6; // q, qd, qdd, fext
     int64_t n_out = 8;//model.dof_count - 3; // control tau
-    double std = 1e-2;
-    double mu_max = 0.25;
+    double std = 1e-4;
+    double mu_max = 1e-1;
 
     ac = ActorCritic(n_in, n_out, mu_max, std); // Cost?
-    ac->normal(0., 1e-1);
+    ac->normal(0., 1e-2);
     ac->to(torch::kFloat64);
 
     if (!pretrained_model.empty()) {
@@ -580,20 +579,7 @@ int main(int argc, char** argv) {
             actions.push_back(std::get<0>(act_val)); // thats the bug! pushs back
             values.push_back(std::get<1>(act_val));
 
-            tau.setZero();
-            for(int i = 0; i < idx.size(); i++){             
-                tau[idx[i]+3] = *(actions[c].data<double>() + i);
-                if (tau[idx[i]+3] != tau[idx[i]+3]) {
-                    notanumber = true;
-                }
-            }
-
-            int no_float = model.q_size-3; // no floating base
-            tau.bottomRows(no_float) += torque(q.bottomRows(no_float), 
-                                               q_off.bottomRows(no_float), 
-                                               qd.bottomRows(no_float), mu_max, 0.01);
-
-            size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-1 , 1e-1),
+            size_t num_of_steps = integrate_const(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-3 , 1e-3),
                                                   System(IncyWincy), // within the system we want the agent to perform actions
                                                   x, tp, t, dt); // fast and explicit
 
@@ -637,7 +623,7 @@ int main(int argc, char** argv) {
 
                 if (c%steps==0)
                 {
-                    printf("Updating network.\n");
+                    printf("\nUpdating network.\n");
                     values.push_back(std::get<1>(ac->forward(states[c-1])));
 
                     returns = PPO::returns(rewards, dones, values, .8, .95);
