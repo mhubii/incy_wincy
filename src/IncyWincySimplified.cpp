@@ -73,6 +73,7 @@ Addons::Geometry::SmoothSegmentedFunction jointTorqueCurve;
 double z, dz; //pentration depth and velocity
 HuntCrossleyContactInfo hcInfo;
 std::vector<SpatialVector> fext;
+std::vector<SpatialVector> fext_feet;
 
 // Spheres.
 std::vector<uint> ballIds;
@@ -120,7 +121,7 @@ uint c; // counter
 auto compute_reward(double v_x, double n_z, VectorNd torque, bool reset) -> torch::Tensor
 {
     // r = v_x + 0.05 n_z - 0.01 |torque|
-    double r = v_x + n_z - 0.1*torque.norm();
+    double r = v_x + 0.05*n_z - 0.01*torque.norm();
     if (reset) {
         r -= 1000.;
     }
@@ -257,6 +258,19 @@ auto IncyWincy(const vector_type& x) -> vector_type {
                                        q_off.bottomRows(no_float), 
                                        qd.bottomRows(no_float), q_max, 0.01);
 
+    for (auto& f: fext) { // set forces to zero prior to each iteration
+        for (auto& f_i : f){
+            if (f_i != f_i) {
+                printf("\nNan in fext\n");
+                std::cout << "q: " << q.transpose() << std::endl;
+                std::cout << "qd: " << qd.transpose() << std::endl;
+                std::cout << "tau: " << tau.transpose() << std::endl;
+                std::exit(1);
+            }
+        }
+        f.setZero();
+    }
+
     for (unsigned int i=0; i<ballIds.size(); i++){
 
         //Calculate the contact forces and populate fext
@@ -277,10 +291,10 @@ auto IncyWincy(const vector_type& x) -> vector_type {
         dz=0.; //this is zero until contact is made
 
         if( z < 0. ){
-            if (!strcmp(model.GetBodyName(ballIds[i]).c_str(), "Body"))
-            {
-                reset = true;
-            }
+            // if (!strcmp(model.GetBodyName(ballIds[i]).c_str(), "Body"))
+            // {
+            //     reset = true;
+            // }
 
             //Get the point of contact resolved in the coordinates of the ball          
             EB0   = CalcBodyWorldOrientation(model,q,ballIds[i],true);
@@ -382,18 +396,6 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     }
 
     ForwardDynamics(model,q,qd,tau,qdd,&fext);
-    for (auto& f: fext) { // set forces to zero after each iteration
-        for (auto& f_i : f){
-            if (f_i != f_i) {
-                printf("\nNan in fext\n");
-                std::cout << "q: " << q.transpose() << std::endl;
-                std::cout << "qd: " << qd.transpose() << std::endl;
-                std::cout << "tau: " << tau.transpose() << std::endl;
-                std::exit(1);
-            }
-        }
-        f.setZero();
-    }
 
     //populate dxdt
     //If you are using a quaternion joint, you must map wx,wy,wz to the 
@@ -571,6 +573,7 @@ int main(int argc, char** argv) {
     }
 
     fext = std::vector<SpatialVector>(model.mBodies.size(), SpatialVector::Zero());
+    fext_feet = std::vector<SpatialVector>(2, SpatialVector::Zero());
 
     ContactToolkit::createRegularizedFrictionCoefficientCurve(
                         staticFrictionSpeed, staticFrictionCoefficient,
@@ -588,13 +591,13 @@ int main(int argc, char** argv) {
     double best_reward = -std::numeric_limits<double>::max();
     double avg_entropy = 0.;
 
-    uint steps = 80000;
+    uint steps = 40000;
     uint epochs = n_epochs;
-    uint mini_batch_size = 10000;
+    uint mini_batch_size = 5000;
     uint ppo_epochs = 8;//uint(steps/mini_batch_size);
 
     int64_t n_in_q = model.dof_count*3; // q, qd, qdd
-    int64_t n_in_fext =  int(fext.size())*6; // fext
+    int64_t n_in_fext =  int(fext_feet.size())*6; // fext
     int64_t n_out = 2;//model.dof_count - 3; // control tau
     double std = 1e-2;
     double mu_max = 0.1;
@@ -644,7 +647,9 @@ int main(int argc, char** argv) {
 
             // Get current state of the environment.
             q_states.push_back(to_state(q, qd, qdd));
-            fext_states.push_back(to_state(fext));
+            fext_feet[0] = fext[fext.size() - 1];
+            fext_feet[1] = fext[fext.size() - 4];
+            fext_states.push_back(to_state(fext_feet));
 
             // printf("iteration %d/%d\n", i, npts);
 
@@ -705,7 +710,7 @@ int main(int argc, char** argv) {
                     printf("\nupdating network\n");
                     values.push_back(std::get<1>(ac->forward(q_states[c-1], fext_states[c-1])));
 
-                    returns = PPO::returns(rewards, dones, values, .8, .95);
+                    returns = PPO::returns(rewards, dones, values, .99, .95);
 
                     torch::Tensor rets = torch::cat(returns).detach();
                     torch::Tensor logs = torch::cat(log_probs).detach();
