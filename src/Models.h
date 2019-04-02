@@ -18,22 +18,18 @@ struct ActorCriticImpl : public torch::nn::Module
     torch::Tensor mu_;
     torch::Tensor log_std_;
     double mu_max_;
-    double std_max_;
+    double std_;
 
     // Critic.
     torch::nn::Linear cmod_lin1_{nullptr}, cmod_lin2_{nullptr}, cmod_lin3_{nullptr}, // model
                       cmod_lin4_{nullptr}, cmod_lin5_{nullptr}, cmod_lin6_{nullptr}; 
 
-<<<<<<< HEAD
-    ActorCriticImpl(int64_t n_in, int64_t n_out, double mu_max, double std_max)
-=======
     torch::nn::Linear cenv_lin1_{nullptr}, cenv_lin2_{nullptr}, cenv_lin3_{nullptr}, // environment
                       cenv_lin4_{nullptr}, cenv_lin5_{nullptr}, cenv_lin6_{nullptr}; 
           
     torch::nn::Linear c_lin1_{nullptr}, c_lin2_{nullptr}, c_val_{nullptr};
 
     ActorCriticImpl(int64_t n_in_mod, int64_t n_in_env, int64_t n_out, double mu_max, double std)
->>>>>>> 56a977d41e1fc1344c2708cfd3647bca141b495e
         : // Actor.
           amod_lin1_(torch::nn::Linear(n_in_mod, 16)), // model
           amod_lin2_(torch::nn::Linear(16, 32)),
@@ -53,13 +49,9 @@ struct ActorCriticImpl : public torch::nn::Module
           a_lin2_(torch::nn::Linear(16, n_out)),
 
           mu_(torch::full(n_out, 0.)),
-<<<<<<< HEAD
-          log_std_(torch::full(n_out, std_max, torch::kFloat64)),
-=======
           log_std_(torch::full(n_out, log(std), torch::kFloat64)),
->>>>>>> 56a977d41e1fc1344c2708cfd3647bca141b495e
           mu_max_(mu_max),
-          std_max_(std_max),
+          std_(std),
           
           // Critic
           cmod_lin1_(torch::nn::Linear(n_in_mod, 16)), // model
@@ -140,7 +132,7 @@ struct ActorCriticImpl : public torch::nn::Module
         aenv = torch::relu(aenv_lin4_->forward(aenv));
         aenv = torch::relu(aenv_lin5_->forward(aenv));
         aenv = torch::relu(aenv_lin6_->forward(aenv));
-
+        
         mu_ = torch::cat({amod, aenv}, 1);
 
         mu_ = torch::relu(a_lin1_->forward(mu_));
@@ -172,7 +164,7 @@ struct ActorCriticImpl : public torch::nn::Module
         {
             torch::NoGradGuard no_grad;
 
-            torch::Tensor action = torch::normal(mu_, torch::sigmoid(log_std_.exp().expand_as(mu_).mul(std_max_)));
+            torch::Tensor action = torch::normal(mu_, torch::sigmoid(log_std_.exp().expand_as(mu_)));
             return std::make_tuple(action, val);  
         }
         else 

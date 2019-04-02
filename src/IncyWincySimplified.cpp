@@ -588,7 +588,7 @@ int main(int argc, char** argv) {
     double best_reward = -std::numeric_limits<double>::max();
     double avg_entropy = 0.;
 
-    uint steps = 80000;
+    uint steps = 1000;
     uint epochs = n_epochs;
     uint mini_batch_size = 10000;
     uint ppo_epochs = 8;//uint(steps/mini_batch_size);
