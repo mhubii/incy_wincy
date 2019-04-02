@@ -73,6 +73,7 @@ Addons::Geometry::SmoothSegmentedFunction jointTorqueCurve;
 double z, dz; //pentration depth and velocity
 HuntCrossleyContactInfo hcInfo;
 std::vector<SpatialVector> fext;
+std::vector<SpatialVector> fext_feet;
 
 // Spheres.
 std::vector<uint> ballIds;
@@ -102,7 +103,8 @@ Vector3d eT0;   //Tangental direction of the plane: in 2d this isn't necessary
 // ---------------- DEEP LEARNING
 ActorCritic ac;
 
-VT states;
+VT q_states; // states, representing joint angles q, and the external forces fext
+VT fext_states;
 VT actions;
 VT rewards;
 VT dones;
@@ -118,10 +120,10 @@ uint c; // counter
 
 auto compute_reward(double v_y, double n_z, VectorNd torque, bool reset) -> torch::Tensor
 {
-    // r = v_y + 0.05 n_z + (z>0 or sth) - 0.01 |torque|
-    double r = v_y + 0.1*n_z - 0.1*torque.norm();
+    // r = v_y + 0.05 n_z - 0.01 |torque|
+    double r = v_y + n_z - 0.1*torque.norm();
     if (reset) {
-        r -= 10.;
+        r -= 1000.;
     }
     torch::Tensor reward = torch::full({1,1}, r, torch::kF64);
     return reward;
@@ -131,7 +133,7 @@ auto compute_reward(double y_old, double y_new, double n_z, VectorNd torque, boo
 {
     double r = 1e3*(y_new - y_old) + n_z - 1e1*torque.norm();
     if (reset) {
-        r -= 10.;
+        r -= 1000.;
     }
     torch::Tensor reward = torch::full({1,1}, r, torch::kF64);
     return reward;
@@ -140,16 +142,9 @@ auto compute_reward(double y_old, double y_new, double n_z, VectorNd torque, boo
 double v_y;
 double n_z;
 
-auto to_state(VectorNd& q, VectorNd& qd, VectorNd qdd, std::vector<SpatialVector>& fext, bool ext=false) -> torch::Tensor
+auto to_state(VectorNd& q, VectorNd& qd, VectorNd qdd) -> torch::Tensor
 {    
-    torch::Tensor state;
-    if (ext) {
-        state = torch::zeros({1, model.dof_count*3 + int(fext.size())*6}, torch::kF64);
-    }
-    else
-    {
-        state = torch::zeros({1, model.dof_count*3}, torch::kF64);
-    }
+    torch::Tensor state = torch::zeros({1, model.dof_count*3}, torch::kF64);
 
     uint j = 0;
 
@@ -171,20 +166,26 @@ auto to_state(VectorNd& q, VectorNd& qd, VectorNd qdd, std::vector<SpatialVector
         j++;
     }
 
-    if (ext)
-    {
-        for (auto& x: fext)
-        {
-            state[0][j] = x[0];
-            state[0][j+1] = x[1];
-            state[0][j+2] = x[2];
-            state[0][j+3] = x[3];
-            state[0][j+4] = x[4];
-            state[0][j+5] = x[5];
-            j += 6; 
-        }
-    }
+    return state;
+}
 
+auto to_state(std::vector<SpatialVector>& fext) -> torch::Tensor
+{
+    torch::Tensor state = torch::zeros({1, int(fext.size()*6)}, torch::kF64);
+
+    uint j = 0;
+
+    for (auto& x: fext)
+    {
+        state[0][j] = x[0];
+        state[0][j+1] = x[1];
+        state[0][j+2] = x[2];
+        state[0][j+3] = x[3];
+        state[0][j+4] = x[4];
+        state[0][j+5] = x[5];
+        j += 6; 
+    }
+    
     return state;
 }
 
@@ -201,9 +202,9 @@ auto torque(const Eigen::MatrixBase<Derived>& q,
     for (uint i=0;i<tp.size();i++)
     {
         // std::cout << "name: " << model.GetBodyName(ballIds[i+1]) << std::endl;
-        int sign = (std::signbit(q[i]-q_off[i]) ? 1 : -1);
+        double sign = double(std::signbit(q[i]-q_off[i]) ? 1. : -1.);
         double te = q_max*sign*jointTorqueCurve.calcValue(std::abs(q[i]-q_off[i]));
-        tp[i] = te*(1+beta*dq[i]); 
+        tp[i] = te*(1+beta*std::abs(dq[i])); 
     }
     
     return tp;
@@ -218,6 +219,16 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     int j = 0;
     for(unsigned int i=0; i<model.q_size; i++){                
         q[i] = x(j);
+        if (q[i] != q[i]) {
+            printf("\nNan in q\n");
+            std::cout << "q: " << q.transpose() << std::endl;
+            std::cout << "qd: " << qd.transpose() << std::endl;
+            std::cout << "tau: " << tau.transpose() << std::endl;
+            std::cout << "state: " << q_states[c] << std::endl;
+            std::cout << "entr: " << ac->entropy() << std::endl;
+            std::cout << "log_std: " << ac->log_std_ << std::endl;
+            std::exit(1);
+        }
         j++;
     }
 
@@ -234,6 +245,10 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     for(int i = 0; i < idx.size(); i++){             
         tau[idx[i]+3] = *(actions[c].data<double>() + i);
         if (tau[idx[i]+3] != tau[idx[i]+3]) {
+            printf("Nan in tau\n");
+            std::cout << "q: " << q.transpose() << std::endl;
+            std::cout << "qd: " << qd.transpose() << std::endl;
+            std::cout << "tau: " << tau.transpose() << std::endl;
             notanumber = true;
         }
     }
@@ -243,11 +258,33 @@ auto IncyWincy(const vector_type& x) -> vector_type {
                                        q_off.bottomRows(no_float), 
                                        qd.bottomRows(no_float), q_max, 0.01);
 
+    for (auto& f: fext) { // set forces to zero prior to each iteration
+        for (auto& f_i : f){
+            if (f_i != f_i) {
+                printf("\nNan in fext\n");
+                std::cout << "q: " << q.transpose() << std::endl;
+                std::cout << "qd: " << qd.transpose() << std::endl;
+                std::cout << "tau: " << tau.transpose() << std::endl;
+                std::exit(1);
+            }
+        }
+        f.setZero();
+    }
+
     for (unsigned int i=0; i<ballIds.size(); i++){
 
         //Calculate the contact forces and populate fext
         r0B0 = CalcBodyToBaseCoordinates(model,q,ballIds[i],Vector3dZero,true);
         ContactToolkit::calcSpherePlaneContactPointPosition(r0B0,ballRadii[i],eN0,r0K0);
+        for (auto& r_i : r0K0) {
+            if (r_i != r_i) {
+                printf("\nNan in r0K0\n");
+                std::cout << "q: " << q.transpose() << std::endl;
+                std::cout << "qd: " << qd.transpose() << std::endl;
+                std::cout << "tau: " << tau.transpose() << std::endl;
+                std::exit(1);
+            }
+        }
 
         //if the contact point is in the sphere compute contact data
         z = (r0K0-r0P0).dot(eN0);
@@ -268,18 +305,61 @@ auto IncyWincy(const vector_type& x) -> vector_type {
 
             //Evaluate Hunt-Crossley Contact forces
             dz = (v0K0).dot(eN0); //assuming the plane is fixed.
+            if (dz != dz) {
+                printf("\nNan in dz\n");
+                std::cout << "q: " << q.transpose() << std::endl;
+                std::cout << "qd: " << qd.transpose() << std::endl;
+                std::cout << "tau: " << tau.transpose() << std::endl;
+                std::exit(1);
+            }
             ContactToolkit::calcHuntCrossleyContactForce(z,dz,stiffness,exponent,damping,hcInfo);
 
             //Resolve the scalar force into the root frame as a wrench
             fK0n = hcInfo.force*eN0;
+            for (auto& f_i : fK0n) {
+                if (f_i != f_i) {
+                    printf("\nNan in fk0n\n");
+                    std::cout << "q: " << q.transpose() << std::endl;
+                    std::cout << "qd: " << qd.transpose() << std::endl;
+                    std::cout << "tau: " << tau.transpose() << std::endl;
+                    std::exit(1);
+                }
+            }
             tK0n = VectorCrossMatrix(r0K0)*fK0n;
+            for (auto& t_i : tK0n) {
+                if (t_i != t_i) {
+                    printf("\nNan in tk0n\n");
+                    std::cout << "q: " << q.transpose() << std::endl;
+                    std::cout << "qd: " << qd.transpose() << std::endl;
+                    std::cout << "tau: " << tau.transpose() << std::endl;
+                    std::exit(1);
+                }
+            }
 
             //Now go and compute the applied friction forces
             v0K0t = v0K0 - dz*eN0;
             ContactToolkit::calcTangentialVelocityDirection(v0K0t,veps,eT0);
             mu = frictionCoefficientCurve.calcValue(v0K0t.norm());
             fK0t = -mu*hcInfo.force*eT0;
+            for (auto& t_i : fK0t) {
+                if (t_i != t_i) {
+                    printf("\nNan in fk0t\n");
+                    std::cout << "q: " << q.transpose() << std::endl;
+                    std::cout << "qd: " << qd.transpose() << std::endl;
+                    std::cout << "tau: " << tau.transpose() << std::endl;
+                    std::exit(1);
+                }
+            }
             tK0t = VectorCrossMatrix(r0K0)*fK0t;
+            for (auto& t_i : tK0t) {
+                if (t_i != t_i) {
+                    printf("\nNan in tk0t\n");
+                    std::cout << "q: " << q.transpose() << std::endl;
+                    std::cout << "qd: " << qd.transpose() << std::endl;
+                    std::cout << "tau: " << tau.transpose() << std::endl;
+                    std::exit(1);
+                }
+            }
             //Apply it to fext
             if (model.IsFixedBodyId(ballIds[i])) { // rbdl performs some reparametrization for fixed bodies, we need to address for that
                 fext[model.GetParentBodyId(ballIds[i])][0] += tK0n[0] + tK0t[0];
@@ -316,9 +396,6 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     }
 
     ForwardDynamics(model,q,qd,tau,qdd,&fext);
-    for (auto& f: fext) { // set forces to zero after each iteration
-        f.setZero();
-    }
 
     //populate dxdt
     //If you are using a quaternion joint, you must map wx,wy,wz to the 
@@ -326,15 +403,25 @@ auto IncyWincy(const vector_type& x) -> vector_type {
     //function
     j = 0;
     for(unsigned int i = 0; i < model.q_size; i++){
-        dxdt[j] = double(qd[i]);
+        dxdt[j] = qd[i];
         if (qd[i] != qd[i]) {
+            printf("\nNan in qd\n");
+            std::cout << "q: " << q.transpose() << std::endl;
+            std::cout << "qd: " << qd.transpose() << std::endl;
+            std::cout << "tau: " << tau.transpose() << std::endl;
+            std::exit(1);
             notanumber = true;
         }
         j++;
     }
     for(unsigned int i = 0; i < model.qdot_size; i++){
-        dxdt[j] = double(qdd[i]);
+        dxdt[j] = qdd[i];
         if (qdd[i] != qdd[i]) {
+            printf("\nNan in qdd\n");
+            std::cout << "q: " << q.transpose() << std::endl;
+            std::cout << "qd: " << qd.transpose() << std::endl;
+            std::cout << "tau: " << tau.transpose() << std::endl;
+            std::exit(1);
             notanumber = true;
         }
         j++;
@@ -492,6 +579,7 @@ int main(int argc, char** argv) {
     }
 
     fext = std::vector<SpatialVector>(model.mBodies.size(), SpatialVector::Zero());
+    fext_feet = std::vector<SpatialVector>(4, SpatialVector::Zero());
 
     ContactToolkit::createRegularizedFrictionCoefficientCurve(
                         staticFrictionSpeed, staticFrictionCoefficient,
@@ -509,18 +597,19 @@ int main(int argc, char** argv) {
     double best_reward = -std::numeric_limits<double>::max();
     double avg_entropy = 0.;
 
-    uint steps = 1024;
+    uint steps = 80000;
     uint epochs = n_epochs;
-    uint mini_batch_size = 256;
-    uint ppo_epochs = 4;//uint(steps/mini_batch_size);
+    uint mini_batch_size = 10000;
+    uint ppo_epochs = 8;//uint(steps/mini_batch_size);
 
-    int64_t n_in = model.dof_count*3 + int(fext.size())*6; // q, qd, qdd, fext
+    int64_t n_in_mod = model.dof_count*3; // q, qd, qdd
+    int64_t n_in_env = int(fext_feet.size())*6; // fext
     int64_t n_out = 8;//model.dof_count - 3; // control tau
-    double std = 1e-2;
-    double mu_max = 0.5;
+    double std = 1e-4;
+    double mu_max = 1e-1;
 
-    ac = ActorCritic(n_in, n_out, mu_max, std); // Cost?
-    ac->normal(0., 1e-2);
+    ac = ActorCritic(n_in_mod, n_in_env, n_out, mu_max, std); // Cost?
+    ac->normal(0., 1.e-2);
     ac->to(torch::kFloat64);
 
     if (!pretrained_model.empty()) {
@@ -532,9 +621,9 @@ int main(int argc, char** argv) {
     // ------------------ USE THE INTEGRATOR SCHEME
     double t = 0.;
     double tp = 0.;
-    unsigned int npts = 1e3;
+    unsigned int npts = 1e4;
 
-    double dt = 1e-2;
+    double dt = 1e-3;
 
     std::vector<double> rowData(model.dof_count+1);
     std::vector<std::vector< double > > matrixData;
@@ -556,35 +645,38 @@ int main(int argc, char** argv) {
     Timer(START);
     for (uint e=0;e<epochs;e++)
     {
-        printf("epoch %d/%d\n", e+1, epochs);
+        printf("\nepoch %d/%d\n", e+1, epochs);
 
-        for(uint i=0; i <= npts; i++){
+        for(uint i=0; i < npts; i++){
 
-            printf("\riter %d/%d", i, npts);
+            printf("\riter %d/%d", i+1, npts);
 
             // Get current state of the environment.
-            states.push_back(to_state(q, qd, qdd, fext, true));
+            q_states.push_back(to_state(q, qd, qdd));
+            fext_feet[0] = fext[fext.size() - 1];
+            fext_feet[1] = fext[fext.size() - 4];
+            fext_feet[2] = fext[fext.size() - 7];
+            fext_feet[3] = fext[fext.size() - 10];
+            fext_states.push_back(to_state(fext_feet));
 
             // printf("iteration %d/%d\n", i, npts);
 
             t += dt;
 
-            actions.push_back(torch::zeros({1,n_out}, torch::kF64));
-            values.push_back(torch::zeros({1,1}, torch::kF64));    
-
-            auto act_val = ac->forward(states[c]);
+            auto act_val = ac->forward(q_states[c], fext_states[c]);
             actions.push_back(std::get<0>(act_val));
             values.push_back(std::get<1>(act_val));
 
-            size_t num_of_steps = integrate_adaptive(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-2 , 1e-2),
-                                                  System(IncyWincy), // within the system we want the agent to perform actions
-                                                  x, tp, t, dt); // fast and explicit
+            size_t num_of_steps = integrate_adaptive(make_dense_output< runge_kutta_dopri5< vector_type > >( 1e-3 , 1e-3),
+                                                     System(IncyWincy), // within the system we want the agent to perform actions
+                                                     x, tp, t, dt); // fast and explicit
 
             if (notanumber) 
             {
                 c = 0;
 
-                states.clear();
+                q_states.clear();
+                fext_states.clear();
                 actions.clear();
                 rewards.clear();
                 dones.clear();
@@ -593,7 +685,8 @@ int main(int argc, char** argv) {
                 values.clear();
                 returns.clear();
 
-                printf("\nNan encountered, stopping current epoch.\n");
+                printf("\nnan encountered, stopping current epoch\n");
+                std::exit(1);
                 break; 
             }
             else 
@@ -607,7 +700,9 @@ int main(int argc, char** argv) {
                 n_z = (CalcBodyWorldOrientation(model, q, model.GetBodyId("Body"), false)*eN0).transpose()*eN0;
                 rewards.push_back(compute_reward(v_y, n_z, tau, reset));
                 // rewards.push_back(compute_reward(y_old, y_new, n_z, tau, reset));
-                dones.push_back(torch::full({1,1}, (reset ? 1. : 0.), torch::kF64));
+                // dones.push_back(torch::full({1,1}, (reset ? 1. : 0.), torch::kF64));
+                dones.push_back(torch::full({1,1}, (npts-1 == i || reset ? 1. : 0.), torch::kF64));
+
 
                 avg_reward += *(rewards[c].data<double>())/npts;
                 avg_entropy += *(ac->entropy().data<double>())/npts;
@@ -620,23 +715,25 @@ int main(int argc, char** argv) {
 
                 if (c%steps==0)
                 {
-                    printf("\nUpdating network.\n");
-                    values.push_back(std::get<1>(ac->forward(states[c-1])));
+                    printf("\nupdating network\n");
+                    values.push_back(std::get<1>(ac->forward(q_states[c-1], fext_states[c-1])));
 
-                    returns = PPO::returns(rewards, dones, values, .8, .95);
+                    returns = PPO::returns(rewards, dones, values, .99, .95);
 
                     torch::Tensor rets = torch::cat(returns).detach();
                     torch::Tensor logs = torch::cat(log_probs).detach();
                     torch::Tensor vals = torch::cat(values).detach();
-                    torch::Tensor stas = torch::cat(states);
+                    torch::Tensor qsta = torch::cat(q_states);
+                    torch::Tensor fsta = torch::cat(fext_states);
                     torch::Tensor acts = torch::cat(actions);
                     torch::Tensor advs = rets - vals.slice(0, 0, steps); // size mismatch between val and ret cause of next val
 
-                    PPO::update(ac, stas, acts, logs, rets, advs, opt, steps, ppo_epochs, mini_batch_size, 1e-3); // higher entropy factor, for less loss??
+                    PPO::update(ac, qsta, fsta, acts, logs, rets, advs, opt, steps, ppo_epochs, mini_batch_size, 1e-4); // higher entropy factor, for less loss??
 
                     c = 0;
 
-                    states.clear();
+                    q_states.clear();
+                    fext_states.clear();
                     actions.clear();
                     rewards.clear();
                     dones.clear();
@@ -694,7 +791,7 @@ int main(int argc, char** argv) {
                 printMatrixToFile(matrixData,emptyHeader,fileNameOut);
         }
 
-        printf("\naverage reward %f\n", avg_reward);
+        printf("average reward %f\n", avg_reward);
 
         notanumber = false;
 
@@ -722,7 +819,7 @@ int main(int argc, char** argv) {
         matrixData.push_back(rowData);
     }
     auto time = Timer(STOP);
-    printf("Elapsed time: %.2f s\n", time/1000.);
+    printf("elapsed time: %.2f s\n", time/1000.);
 
     out.close();
 
