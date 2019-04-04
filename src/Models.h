@@ -31,19 +31,19 @@ struct ActorCriticImpl : public torch::nn::Module
 
     ActorCriticImpl(int64_t n_in_mod, int64_t n_in_env, int64_t n_out, double mu_max, double std)
         : // Actor.
-          amod_lin1_(torch::nn::Linear(n_in_mod, 16)), // model
-          amod_lin2_(torch::nn::Linear(16, 32)),
-          amod_lin3_(torch::nn::Linear(32, 32)),
-          amod_lin4_(torch::nn::Linear(32, 32)),
-          amod_lin5_(torch::nn::Linear(32, 32)),
-          amod_lin6_(torch::nn::Linear(32, 16)),
+          amod_lin1_(torch::nn::Linear(n_in_mod, 64)), // model
+          amod_lin2_(torch::nn::Linear(64, 64)),
+          amod_lin3_(torch::nn::Linear(64, 64)),
+          amod_lin4_(torch::nn::Linear(64, 64)),
+          amod_lin5_(torch::nn::Linear(64, 64)),
+          amod_lin6_(torch::nn::Linear(64, 16)),
 
-          aenv_lin1_(torch::nn::Linear(n_in_env, 16)), // environment
-          aenv_lin2_(torch::nn::Linear(16, 32)),
-          aenv_lin3_(torch::nn::Linear(32, 32)),
-          aenv_lin4_(torch::nn::Linear(32, 32)),
-          aenv_lin5_(torch::nn::Linear(32, 32)),
-          aenv_lin6_(torch::nn::Linear(32, 16)),
+          aenv_lin1_(torch::nn::Linear(n_in_env, 64)), // environment
+          aenv_lin2_(torch::nn::Linear(64, 64)),
+          aenv_lin3_(torch::nn::Linear(64, 64)),
+          aenv_lin4_(torch::nn::Linear(64, 64)),
+          aenv_lin5_(torch::nn::Linear(64, 64)),
+          aenv_lin6_(torch::nn::Linear(64, 16)),
 
           a_lin1_(torch::nn::Linear(32, 16)),
           a_lin2_(torch::nn::Linear(16, n_out)),
@@ -54,19 +54,19 @@ struct ActorCriticImpl : public torch::nn::Module
           std_(std),
           
           // Critic
-          cmod_lin1_(torch::nn::Linear(n_in_mod, 16)), // model
-          cmod_lin2_(torch::nn::Linear(16, 32)),
-          cmod_lin3_(torch::nn::Linear(32, 32)),
-          cmod_lin4_(torch::nn::Linear(32, 32)),
-          cmod_lin5_(torch::nn::Linear(32, 32)),
-          cmod_lin6_(torch::nn::Linear(32, 16)),
+          cmod_lin1_(torch::nn::Linear(n_in_mod, 64)), // model
+          cmod_lin2_(torch::nn::Linear(64, 64)),
+          cmod_lin3_(torch::nn::Linear(64, 64)),
+          cmod_lin4_(torch::nn::Linear(64, 64)),
+          cmod_lin5_(torch::nn::Linear(64, 64)),
+          cmod_lin6_(torch::nn::Linear(64, 16)),
 
-          cenv_lin1_(torch::nn::Linear(n_in_env, 16)), // environment
-          cenv_lin2_(torch::nn::Linear(16, 32)),
-          cenv_lin3_(torch::nn::Linear(32, 32)),
-          cenv_lin4_(torch::nn::Linear(32, 32)),
-          cenv_lin5_(torch::nn::Linear(32, 32)),
-          cenv_lin6_(torch::nn::Linear(32, 16)),
+          cenv_lin1_(torch::nn::Linear(n_in_env, 64)), // environment
+          cenv_lin2_(torch::nn::Linear(64, 64)),
+          cenv_lin3_(torch::nn::Linear(64, 64)),
+          cenv_lin4_(torch::nn::Linear(64, 64)),
+          cenv_lin5_(torch::nn::Linear(64, 64)),
+          cenv_lin6_(torch::nn::Linear(64, 16)),
 
           c_lin1_(torch::nn::Linear(32, 16)),
           c_lin2_(torch::nn::Linear(16, n_out)),
@@ -119,43 +119,43 @@ struct ActorCriticImpl : public torch::nn::Module
     {
 
         // Actor.
-        torch::Tensor amod = torch::relu(amod_lin1_->forward(mod));
-        amod = torch::relu(amod_lin2_->forward(amod));
-        amod = torch::relu(amod_lin3_->forward(amod));
-        amod = torch::relu(amod_lin4_->forward(amod));
-        amod = torch::relu(amod_lin5_->forward(amod));
-        amod = torch::relu(amod_lin6_->forward(amod));
+        torch::Tensor amod = torch::tanh(amod_lin1_->forward(mod));
+        amod = torch::tanh(amod_lin2_->forward(amod));
+        amod = torch::tanh(amod_lin3_->forward(amod));
+        amod = torch::tanh(amod_lin4_->forward(amod));
+        amod = torch::tanh(amod_lin5_->forward(amod));
+        amod = torch::tanh(amod_lin6_->forward(amod));
 
-        torch::Tensor aenv = torch::relu(aenv_lin1_->forward(env));
-        aenv = torch::relu(aenv_lin2_->forward(aenv));
-        aenv = torch::relu(aenv_lin3_->forward(aenv));
-        aenv = torch::relu(aenv_lin4_->forward(aenv));
-        aenv = torch::relu(aenv_lin5_->forward(aenv));
-        aenv = torch::relu(aenv_lin6_->forward(aenv));
+        torch::Tensor aenv = torch::tanh(aenv_lin1_->forward(env));
+        aenv = torch::tanh(aenv_lin2_->forward(aenv));
+        aenv = torch::tanh(aenv_lin3_->forward(aenv));
+        aenv = torch::tanh(aenv_lin4_->forward(aenv));
+        aenv = torch::tanh(aenv_lin5_->forward(aenv));
+        aenv = torch::tanh(aenv_lin6_->forward(aenv));
         
         mu_ = torch::cat({amod, aenv}, 1);
 
-        mu_ = torch::relu(a_lin1_->forward(mu_));
+        mu_ = torch::tanh(a_lin1_->forward(mu_));
         mu_ = torch::tanh(a_lin2_->forward(mu_)).mul(mu_max_);
 
         // Critic.
-        torch::Tensor cmod = torch::relu(cmod_lin1_->forward(mod));
-        cmod = torch::relu(cmod_lin2_->forward(cmod));
-        cmod = torch::relu(cmod_lin3_->forward(cmod));
-        cmod = torch::relu(cmod_lin4_->forward(cmod));
-        cmod = torch::relu(cmod_lin5_->forward(cmod));
-        cmod = torch::relu(cmod_lin6_->forward(cmod));
+        torch::Tensor cmod = torch::tanh(cmod_lin1_->forward(mod));
+        cmod = torch::tanh(cmod_lin2_->forward(cmod));
+        cmod = torch::tanh(cmod_lin3_->forward(cmod));
+        cmod = torch::tanh(cmod_lin4_->forward(cmod));
+        cmod = torch::tanh(cmod_lin5_->forward(cmod));
+        cmod = torch::tanh(cmod_lin6_->forward(cmod));
 
-        torch::Tensor cenv = torch::relu(cenv_lin1_->forward(env));
-        cenv = torch::relu(cenv_lin2_->forward(cenv));
-        cenv = torch::relu(cenv_lin3_->forward(cenv));
-        cenv = torch::relu(cenv_lin4_->forward(cenv));
-        cenv = torch::relu(cenv_lin5_->forward(cenv));
-        cenv = torch::relu(cenv_lin6_->forward(cenv));
+        torch::Tensor cenv = torch::tanh(cenv_lin1_->forward(env));
+        cenv = torch::tanh(cenv_lin2_->forward(cenv));
+        cenv = torch::tanh(cenv_lin3_->forward(cenv));
+        cenv = torch::tanh(cenv_lin4_->forward(cenv));
+        cenv = torch::tanh(cenv_lin5_->forward(cenv));
+        cenv = torch::tanh(cenv_lin6_->forward(cenv));
 
         torch::Tensor val = torch::cat({cmod, cenv}, 1);
 
-        val = torch::relu(c_lin1_->forward(val));
+        val = torch::tanh(c_lin1_->forward(val));
         val = torch::tanh(c_lin2_->forward(val)).mul(mu_max_);
         val = c_val_->forward(val);
 
