@@ -121,7 +121,7 @@ uint c; // counter
 auto compute_reward(double v_y, double n_z, VectorNd torque, bool reset) -> torch::Tensor
 {
     // r = v_y + 0.05 n_z - 0.01 |torque|
-    double r = v_y + n_z - 0.1*torque.norm();
+    double r = v_y + 0.1*n_z - 0.01*torque.norm();
     if (reset) {
         r -= 1000.;
     }
@@ -291,10 +291,10 @@ auto IncyWincy(const vector_type& x) -> vector_type {
         dz=0.; //this is zero until contact is made
 
         if( z < 0. ){
-            if (!strcmp(model.GetBodyName(ballIds[i]).c_str(), "Body"))
-            {
-                reset = true;
-            }
+            // if (!strcmp(model.GetBodyName(ballIds[i]).c_str(), "Body"))
+            // {
+            //     reset = true;
+            // }
 
             //Get the point of contact resolved in the coordinates of the ball          
             EB0   = CalcBodyWorldOrientation(model,q,ballIds[i],true);
@@ -555,10 +555,10 @@ int main(int argc, char** argv) {
     q_off = VectorNd::Zero(model.dof_count);
     // q_off.bottomRows(model.dof_count-3) << M_PI/2., -M_PI/2., -M_PI/2., M_PI/2., M_PI/2., -M_PI/2., -M_PI/2., M_PI/2.;
     idx = {0, 1, 3, 4, 6, 7, 9, 10};
-    q_off.bottomRows(model.dof_count-3) << -M_PI/4., M_PI/4., -M_PI/4., M_PI/4., -M_PI/4., M_PI/4., M_PI/4., M_PI/4., -M_PI/4., -M_PI/4., -M_PI/4., M_PI/4.;
+    q_off.bottomRows(model.dof_count-3) << -M_PI/4., M_PI/4.*3., -M_PI/2., M_PI/4., -M_PI/4.*3., M_PI/2., M_PI/4., M_PI/4.*3., -M_PI/2., -M_PI/4., -M_PI/4.*3., M_PI/2.;
 
     // q[1] = 0.8; //ball starts 0.3m off the ground
-    q[1] = CalcBaseToBodyCoordinates(model, q_off, model.GetBodyId(ballNames[ballNames.size()-1].c_str()), Vector3d::Zero())[2]+ballRadii[ballRadii.size()-1];
+    q[1] = CalcBaseToBodyCoordinates(model, q_off, model.GetBodyId(ballNames[ballNames.size()-1].c_str()), Vector3d::Zero())[1]+ballRadii[ballRadii.size()-1];
     // q.bottomRows(model.dof_count-3) << 2.0, -1.5, -2.0, 1.5, 2.0, -1.5, -2.0, 1.5;
     q.bottomRows(model.dof_count-3) = q_off.bottomRows(model.dof_count-3);
     qd[0]= v_init[0];
@@ -597,10 +597,11 @@ int main(int argc, char** argv) {
     double best_reward = -std::numeric_limits<double>::max();
     double avg_entropy = 0.;
 
-    uint steps = 80000;
+    uint steps = 40000;
     uint epochs = n_epochs;
     uint mini_batch_size = 10000;
-    uint ppo_epochs = 8;//uint(steps/mini_batch_size);
+    uint ppo_epochs = 4;//uint(steps/mini_batch_size);
+    double entropy_factor = 1e-3;
 
     int64_t n_in_mod = model.dof_count*3; // q, qd, qdd
     int64_t n_in_env = int(fext_feet.size())*6; // fext
@@ -718,17 +719,20 @@ int main(int argc, char** argv) {
                     printf("\nupdating network\n");
                     values.push_back(std::get<1>(ac->forward(q_states[c-1], fext_states[c-1])));
 
-                    returns = PPO::returns(rewards, dones, values, .99, .95);
+                    returns = PPO::returns(rewards, dones, values, .9, .95);
 
-                    torch::Tensor rets = torch::cat(returns).detach();
-                    torch::Tensor logs = torch::cat(log_probs).detach();
-                    torch::Tensor vals = torch::cat(values).detach();
-                    torch::Tensor qsta = torch::cat(q_states);
-                    torch::Tensor fsta = torch::cat(fext_states);
-                    torch::Tensor acts = torch::cat(actions);
+                    torch::Tensor rets = torch::cat(returns).detach().cuda();
+                    torch::Tensor logs = torch::cat(log_probs).detach().cuda();
+                    torch::Tensor vals = torch::cat(values).detach().cuda();
+                    torch::Tensor qsta = torch::cat(q_states).cuda();
+                    torch::Tensor fsta = torch::cat(fext_states).cuda();
+                    torch::Tensor acts = torch::cat(actions).cuda();
                     torch::Tensor advs = rets - vals.slice(0, 0, steps); // size mismatch between val and ret cause of next val
 
-                    PPO::update(ac, qsta, fsta, acts, logs, rets, advs, opt, steps, ppo_epochs, mini_batch_size, 1e-4); // higher entropy factor, for less loss??
+                    ac->to(torch::kCUDA);
+                    PPO::update(ac, qsta, fsta, acts, logs, rets, advs, opt, steps, ppo_epochs, mini_batch_size, entropy_factor); // higher entropy factor, for less loss??
+                    ac->to(torch::kCPU);
+                    ac->to(torch::kF64);
 
                     c = 0;
 
@@ -780,15 +784,15 @@ int main(int argc, char** argv) {
         if (!notanumber) {
 
             if (avg_reward > best_reward)
-                {
-                    best_reward = avg_reward;
-                    torch::save(ac, "models/best_model_at_epoch_" + std::to_string(e+1) + ".pt");
-                }
+            {
+                best_reward = avg_reward;
+                torch::save(ac, "models/best_model_at_epoch_" + std::to_string(e+1) + ".pt");
+            }
 
-                out << e+1 << ", " << avg_reward << ", " << avg_entropy << "\n";
+            out << e+1 << ", " << avg_reward << ", " << avg_entropy << "\n";
 
-                std::string fileNameOut(outLoc + "animation_epoch_" + std::to_string(e+1) + ".csv");   // ii implicit integrator
-                printMatrixToFile(matrixData,emptyHeader,fileNameOut);
+            std::string fileNameOut(outLoc + "animation_epoch_" + std::to_string(e+1) + ".csv");   // ii implicit integrator
+            printMatrixToFile(matrixData,emptyHeader,fileNameOut);
         }
 
         printf("average reward %f\n", avg_reward);

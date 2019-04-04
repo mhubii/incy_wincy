@@ -121,7 +121,7 @@ uint c; // counter
 auto compute_reward(double v_x, double n_z, VectorNd torque, bool reset) -> torch::Tensor
 {
     // r = v_x + 0.05 n_z - 0.01 |torque|
-    double r = v_x + 0.05*n_z - 0.01*torque.norm();
+    double r = v_x + 0.1*n_z - 0.01*torque.norm();
     if (reset) {
         r -= 1000.;
     }
@@ -528,7 +528,7 @@ int main(int argc, char** argv) {
     veps = staticFrictionSpeed/100.0;
 
     angleAtZeroTorque = 0; // offset for the joint torques is set via calcValue(...)
-    dangle = M_PI/4.;
+    dangle = M_PI/2.;
     stiffnessAtLowTorque = 0;      
     stiffnessAtOneNormTorque = 2.;//1.1/std::abs(angleAtZeroTorque-dangle); // minimum possible stiffness
     curviness = 1;
@@ -548,11 +548,11 @@ int main(int argc, char** argv) {
 
     q_off = VectorNd::Zero(model.dof_count);
     // q_off.bottomRows(model.dof_count-3) << M_PI/2., -M_PI/2., -M_PI/2., M_PI/2., M_PI/2., -M_PI/2., -M_PI/2., M_PI/2.;
-    idx = {0, 2};
-    q_off.bottomRows(model.dof_count-3) << -M_PI/4., M_PI/4., M_PI/4., -M_PI/4.;
+    idx = {0, 1, 2, 3};
+    q_off.bottomRows(model.dof_count-3) << -M_PI/4.*3., M_PI/2., M_PI/4.*3., -M_PI/2.;
 
     // q[1] = 0.8; //ball starts 0.3m off the ground
-    q[1] = CalcBaseToBodyCoordinates(model, q_off, model.GetBodyId(ballNames[ballNames.size()-1].c_str()), Vector3d::Zero())[2]+ballRadii[ballRadii.size()-1];
+    q[1] = CalcBaseToBodyCoordinates(model, q_off, model.GetBodyId(ballNames[ballNames.size()-1].c_str()), Vector3d::Zero())[1]+ballRadii[ballRadii.size()-1];
     // q.bottomRows(model.dof_count-3) << 2.0, -1.5, -2.0, 1.5, 2.0, -1.5, -2.0, 1.5;
     q.bottomRows(model.dof_count-3) = q_off.bottomRows(model.dof_count-3);
     qd[0]= v_init[0];
@@ -591,16 +591,16 @@ int main(int argc, char** argv) {
     double best_reward = -std::numeric_limits<double>::max();
     double avg_entropy = 0.;
 
-    uint steps = 1000;
+    uint steps = 80000;
     uint epochs = n_epochs;
-    uint mini_batch_size = 5000;
+    uint mini_batch_size = 10000;
     uint ppo_epochs = 8;//uint(steps/mini_batch_size);
 
     int64_t n_in_q = model.dof_count*3; // q, qd, qdd
     int64_t n_in_fext =  int(fext_feet.size())*6; // fext
-    int64_t n_out = 2;//model.dof_count - 3; // control tau
+    int64_t n_out = 4;//model.dof_count - 3; // control tau
     double std = 1e-2;
-    double mu_max = 0.1;
+    double mu_max = 0.05;
 
     ac = ActorCritic(n_in_q, n_in_fext, n_out, mu_max, std); // Cost?
     ac->normal(0., 1.e-2);
@@ -710,17 +710,20 @@ int main(int argc, char** argv) {
                     printf("\nupdating network\n");
                     values.push_back(std::get<1>(ac->forward(q_states[c-1], fext_states[c-1])));
 
-                    returns = PPO::returns(rewards, dones, values, .99, .95);
+                    returns = PPO::returns(rewards, dones, values, .8, .95);
 
-                    torch::Tensor rets = torch::cat(returns).detach();
-                    torch::Tensor logs = torch::cat(log_probs).detach();
-                    torch::Tensor vals = torch::cat(values).detach();
-                    torch::Tensor qsta = torch::cat(q_states);
-                    torch::Tensor fsta = torch::cat(fext_states);
-                    torch::Tensor acts = torch::cat(actions);
+                    torch::Tensor rets = torch::cat(returns).detach().cuda();
+                    torch::Tensor logs = torch::cat(log_probs).detach().cuda();
+                    torch::Tensor vals = torch::cat(values).detach().cuda();
+                    torch::Tensor qsta = torch::cat(q_states).cuda();
+                    torch::Tensor fsta = torch::cat(fext_states).cuda();
+                    torch::Tensor acts = torch::cat(actions).cuda();
                     torch::Tensor advs = rets - vals.slice(0, 0, steps); // size mismatch between val and ret cause of next val
 
-                    PPO::update(ac, qsta, fsta, acts, logs, rets, advs, opt, steps, ppo_epochs, mini_batch_size, 1e-3); // higher entropy factor, for less loss??
+                    ac->to(torch::kCUDA);
+                    PPO::update(ac, qsta, fsta, acts, logs, rets, advs, opt, steps, ppo_epochs, mini_batch_size, 1e-4); // higher entropy factor, for less loss??
+                    ac->to(torch::kCPU);
+                    ac->to(torch::kF64);
 
                     c = 0;
 

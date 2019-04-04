@@ -10,7 +10,8 @@ local radiusJoint = 0.1
 local densityJoint = 1.0
 
 local radiusLimb = 0.0725
-local lengthLimb = 0.4
+local lengthUpperLimb = 0.4
+local lengthLowerLimb = 0.6
 local densityLimb = 1.0
 
 -- inertia and mass of a spheres
@@ -54,11 +55,18 @@ meshes = {
     mesh_center = { 0.0, 0.0, 0.0 },
     src = "unit_sphere_medres.obj",
   },
-  limb = {
-    name = "Limb",
-    dimensions = { 2.0*radiusLimb, 2*radiusLimb, lengthLimb },
+  upper_limb = {
+    name = "UpperLimb",
+    dimensions = { 2.0*radiusLimb, 2*radiusLimb, lengthUpperLimb },
     color = { 0.2, 0.2, 0.2 },
-    mesh_center = { 0.0, 0.0, -lengthLimb/2.0 },
+    mesh_center = { 0.0, 0.0, -lengthUpperLimb/2.0 },
+    src = "cylinder.obj",
+  },
+  lower_limb = {
+    name = "LowerLimb",
+    dimensions = { 2.0*radiusLimb, 2*radiusLimb, lengthLowerLimb },
+    color = { 0.2, 0.2, 0.2 },
+    mesh_center = { 0.0, 0.0, -lengthLowerLimb/2.0 },
     src = "cylinder.obj",
   },
   joint = {
@@ -72,7 +80,7 @@ meshes = {
     name = "Foot",
     dimensions = { 2.0*radiusJoint, 2.0*radiusJoint, 2.0*radiusJoint },
     color = { 0.8, 0.1, 0.1 },
-    mesh_center = { 0.0, 0.0, -lengthLimb },
+    mesh_center = { 0.0, 0.0, -lengthLowerLimb },
     src = "unit_sphere_medres.obj",
   },
 } -- meshes
@@ -99,10 +107,15 @@ local inertiaBody = inertiaSphere(radiusBody, densityBody)
 local massJoint = massSphere(radiusJoint, densityJoint)
 local inertiaJoint = inertiaSphere(radiusJoint, densityJoint)
 
-local massLimb = massCylinder(radiusLimb, lengthLimb, densityLimb)
-local inertiaLimbX = inertiaCylinderX(radiusLimb, lengthLimb, densityLimb)
-local inertiaLimbY = inertiaCylinderY(radiusLimb, lengthLimb, densityLimb)
-local inertiaLimbZ = inertiaCylinderZ(radiusLimb, lengthLimb, densityLimb)
+local massUpperLimb = massCylinder(radiusLimb, lengthUpperLimb, densityLimb)
+local inertiaUpperLimbX = inertiaCylinderX(radiusLimb, lengthUpperLimb, densityLimb)
+local inertiaUpperLimbY = inertiaCylinderY(radiusLimb, lengthUpperLimb, densityLimb)
+local inertiaUpperLimbZ = inertiaCylinderZ(radiusLimb, lengthUpperLimb, densityLimb)
+
+local massLowerLimb = massCylinder(radiusLimb, lengthLowerLimb, densityLimb)
+local inertiaLowerLimbX = inertiaCylinderX(radiusLimb, lengthLowerLimb, densityLimb)
+local inertiaLowerLimbY = inertiaCylinderY(radiusLimb, lengthLowerLimb, densityLimb)
+local inertiaLowerLimbZ = inertiaCylinderZ(radiusLimb, lengthLowerLimb, densityLimb)
 
 dynamics = {
   body = {
@@ -114,13 +127,22 @@ dynamics = {
       { 0.0, 0.0, inertiaBody },
     },
   },
-  limb = {
-    mass = massLimb,
-    com = { 0.0, 0.0, -lengthLimb/2.0 },
+  upper_limb = {
+    mass = massUpperLimb,
+    com = { 0.0, 0.0, -lengthUpperLimb/2.0 },
     inertia = {
-      { inertiaLimbX, 0.0, 0.0 },
-      { 0.0, inertiaLimbY, 0.0 },
-      { 0.0, 0.0, inertiaLimbZ },
+      { inertiaUpperLimbX, 0.0, 0.0 },
+      { 0.0, inertiaUpperLimbY, 0.0 },
+      { 0.0, 0.0, inertiaUpperLimbZ },
+    },
+  },
+  lower_limb = {
+    mass = massLowerLimb,
+    com = { 0.0, 0.0, -lengthLowerLimb/2.0 },
+    inertia = {
+      { inertiaLowerLimbX, 0.0, 0.0 },
+      { 0.0, inertiaLowerLimbY, 0.0 },
+      { 0.0, 0.0, inertiaLowerLimbZ },
     },
   },
   joint = {
@@ -189,9 +211,9 @@ model = {
       name = "FrontalUpperLimb",
       parent = "FrontalBodyJoint",
       visuals = {
-        meshes.limb,
+        meshes.upper_limb,
       },
-      body = dynamics.limb,
+      body = dynamics.upper_limb,
       joint_frame = {
         r = { 0.0, 0.0, 0.0 },
       },
@@ -205,7 +227,7 @@ model = {
       },
       body = dynamics.joint,
       joint_frame = {
-        r = { 0.0, 0.0, -lengthLimb },
+        r = { 0.0, 0.0, -lengthUpperLimb },
       },
       --joint = joints.revolute_y,
     },
@@ -213,9 +235,9 @@ model = {
       name = "FrontalLowerLimb",
       parent = "FrontalUpperJoint",
       visuals = {
-        meshes.limb,
+        meshes.lower_limb,
       },
-      body = dynamics.limb,
+      body = dynamics.lower_limb,
       joint_frame = {
         r = { 0.0, 0.0, 0.0 },
       },
@@ -229,7 +251,7 @@ model = {
       },
       body = dynamics.joint,
       joint_frame = {
-        r = { 0.0, 0.0, -lengthLimb },
+        r = { 0.0, 0.0, -lengthLowerLimb },
       },
       --joint = joints.revolute_y,
     },
@@ -251,9 +273,9 @@ model = {
       name = "DorsalUpperLimb",
       parent = "DorsalBodyJoint",
       visuals = {
-        meshes.limb,
+        meshes.upper_limb,
       },
-      body = dynamics.limb,
+      body = dynamics.upper_limb,
       joint_frame = {
         r = { 0.0, 0.0, 0.0 },
       },
@@ -267,7 +289,7 @@ model = {
       },
       body = dynamics.joint,
       joint_frame = {
-        r = { 0.0, 0.0, -lengthLimb },
+        r = { 0.0, 0.0, -lengthUpperLimb },
       },
       --joint = joints.revolute_y,
     },
@@ -275,9 +297,9 @@ model = {
       name = "DorsalLowerLimb",
       parent = "DorsalUpperJoint",
       visuals = {
-        meshes.limb,
+        meshes.lower_limb,
       },
-      body = dynamics.limb,
+      body = dynamics.lower_limb,
       joint_frame = {
         r = { 0.0, 0.0, 0.0 },
       },
@@ -291,7 +313,7 @@ model = {
       },
       body = dynamics.joint,
       joint_frame = {
-        r = { 0.0, 0.0, -lengthLimb },
+        r = { 0.0, 0.0, -lengthLowerLimb },
       },
       --joint = joints.revolute_y,
     },
